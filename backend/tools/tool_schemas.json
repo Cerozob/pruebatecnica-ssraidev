@@ -1,0 +1,75 @@
+{
+  "create_request": {
+    "description": "Crea una solicitud nueva solo con su descripción. El resumen queda vacío, la prioridad y el esfuerzo quedan en 'unassigned' y el estado en 'pending'. Devuelve la solicitud creada con su id.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "description": {"type": "string", "description": "Descripción completa del caso, en las palabras del usuario."}
+      },
+      "required": ["description"]
+    }
+  },
+  "get_request": {
+    "description": "Consulta una solicitud por su id y devuelve todos sus campos: description, summary, priority, effort y status.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "description": "Id de la solicitud (UUIDv7)."}
+      },
+      "required": ["id"]
+    }
+  },
+  "list_requests": {
+    "description": "Lista las solicitudes existentes. Se puede filtrar por estado: pending, in progress, delayed o done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {"type": "string", "description": "Filtro opcional por estado: pending, in progress, delayed o done."}
+      }
+    }
+  },
+  "update_request_summary": {
+    "description": "Actualiza el resumen ejecutivo de una solicitud. El resumen debe ser distinto de la descripción.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "description": "Id de la solicitud (UUIDv7)."},
+        "summary": {"type": "string", "description": "Resumen ejecutivo breve de la solicitud."}
+      },
+      "required": ["id", "summary"]
+    }
+  },
+  "update_request_priority": {
+    "description": "Asigna el nivel de prioridad de una solicitud. Solo acepta low, medium o high.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "description": "Id de la solicitud (UUIDv7)."},
+        "priority": {"type": "string", "description": "Nivel de prioridad: low, medium o high."}
+      },
+      "required": ["id", "priority"]
+    }
+  },
+  "update_request_effort": {
+    "description": "Asigna el nivel de esfuerzo estimado de una solicitud. Solo acepta low, medium o high.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "description": "Id de la solicitud (UUIDv7)."},
+        "effort": {"type": "string", "description": "Nivel de esfuerzo estimado: low, medium o high."}
+      },
+      "required": ["id", "effort"]
+    }
+  },
+  "update_request_status": {
+    "description": "Cambia el estado de una solicitud. Solo acepta pending, in progress, delayed o done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "description": "Id de la solicitud (UUIDv7)."},
+        "status": {"type": "string", "description": "Nuevo estado: pending, in progress, delayed o done."}
+      },
+      "required": ["id", "status"]
+    }
+  }
+}

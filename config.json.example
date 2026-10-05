@@ -1,0 +1,42 @@
+{
+  "project_name": "rag-agentico",
+  "account": "123456789012",
+  "region": "us-east-1",
+  "tags": {
+    "miempresa:proyecto": "rag-agentico",
+    "miempresa:entorno": "dev",
+    "miempresa:responsable": "equipo-ia"
+  },
+  "nag": {
+    "aws_solutions": true,
+    "hipaa_security": false,
+    "nist_800_53_r4": false,
+    "nist_800_53_r5": false,
+    "pci_dss_321": false,
+    "serverless": true
+  },
+  "auth": {
+    "domain_prefix": "rag-agentico-cambiar-esto",
+    "allowed_emails": ["persona@ejemplo.com"],
+    "allowed_domains": ["ejemplo.com"]
+  },
+  "models": {
+    "agent_model_id": "global.amazon.nova-2-lite-v1:0",
+    "judge_model_id": "global.amazon.nova-2-lite-v1:0"
+  },
+  "web_search": {
+    "allowed_domains": [
+      "docs.aws.amazon.com",
+      "aws.amazon.com",
+      "learn.microsoft.com",
+      "azure.microsoft.com"
+    ]
+  },
+  "api": {
+    "throttle_rate_limit": 10,
+    "throttle_burst_limit": 20
+  },
+  "logs": {
+    "retention_days": 30
+  }
+}

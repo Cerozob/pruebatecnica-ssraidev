@@ -1,0 +1,17 @@
+# Swarm de agentes para Amazon Bedrock AgentCore Runtime (ARM64).
+FROM public.ecr.aws/docker/library/python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY swarm_agent ./swarm_agent
+
+RUN useradd --create-home --uid 1000 agent
+USER agent
+
+EXPOSE 8080
+# ADOT instrumenta el proceso y envía trazas y métricas a CloudWatch (paso 24).
+CMD ["opentelemetry-instrument", "python", "-m", "swarm_agent.runtime"]

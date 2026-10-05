@@ -1,0 +1,16 @@
+# Tarea de evaluación agéntica para AWS Fargate (ARM64).
+FROM public.ecr.aws/docker/library/python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+
+COPY requirements.txt requirements-evaluation.txt ./
+RUN pip install --no-cache-dir -r requirements-evaluation.txt
+
+COPY swarm_agent ./swarm_agent
+COPY evaluation ./evaluation
+
+RUN useradd --create-home --uid 1000 evaluator
+USER evaluator
+
+CMD ["python", "-m", "evaluation.runner"]

@@ -1,0 +1,7 @@
+-r requirements.txt
+pytest==9.1.1
+ruff==0.16.10
+moto[dynamodb,s3,ssm,secretsmanager,logs,stepfunctions]==5.2.3
+aws-lambda-powertools[validation]>=3.35,<4
+pydantic>=2.11,<3
+boto3>=1.43

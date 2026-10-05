@@ -1,0 +1,20 @@
+*.swp
+__pycache__
+.pytest_cache
+.venv
+*.egg-info
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+
+# Configuración local con valores sensibles (se versiona config.json.example)
+config.json
+
+# Frontend
+frontend/node_modules
+frontend/dist
+
+# Herramientas
+.ruff_cache
+public/config.json

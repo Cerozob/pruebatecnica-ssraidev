@@ -1,0 +1,11 @@
+line-length = 120
+target-version = "py313"
+extend-exclude = ["cdk.out", "frontend", ".venv"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "N"]
+# S101: assert en pruebas. N802/N803/N815: los campos y parámetros de la API van en camelCase.
+ignore = ["S101", "N802", "N803", "N815"]
+
+[lint.isort]
+known-first-party = ["pruebatecnica", "common", "api", "tools", "triggers", "swarm_agent", "evaluation"]

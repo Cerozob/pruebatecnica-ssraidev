@@ -1,0 +1,82 @@
+[
+  {
+    "id": "01a10759-54f6-72fc-8621-ea73605d40d1",
+    "description": "El portal de nómina muestra un error 500 al descargar el desprendible de pago de octubre. Afecta a todo el personal del área de operaciones.",
+    "summary": "Error 500 al descargar desprendibles de pago de octubre.",
+    "priority": "high",
+    "effort": "medium",
+    "status": "in progress"
+  },
+  {
+    "id": "01a10759-54f6-72fc-8621-ea74264d5770",
+    "description": "Solicito acceso de lectura a la carpeta compartida de contratos del área legal para revisar los acuerdos con proveedores de 2025.",
+    "summary": "Acceso de lectura a la carpeta de contratos de legal.",
+    "priority": "low",
+    "effort": "low",
+    "status": "done"
+  },
+  {
+    "id": "01a10759-54f6-72fc-8621-ea7533b92832",
+    "description": "La aplicación de inventario corre en Java 8 sobre un servidor físico que sale de garantía en diciembre. Necesitamos un plan para migrarla a la nube antes de esa fecha.",
+    "summary": "",
+    "priority": "unassigned",
+    "effort": "unassigned",
+    "status": "pending"
+  },
+  {
+    "id": "01a10759-54f6-72fc-8621-ea762314a5c0",
+    "description": "Las facturas electrónicas no se están enviando a la DIAN desde el viernes. El proceso batch nocturno termina con un timeout en la conexión.",
+    "summary": "Facturación electrónica sin enviarse por timeout del proceso batch.",
+    "priority": "high",
+    "effort": "high",
+    "status": "delayed"
+  },
+  {
+    "id": "01a10759-54f6-72fc-8621-ea773812c51a",
+    "description": "Crear un usuario y correo corporativo para la nueva analista de compras que ingresa el próximo lunes.",
+    "summary": "Alta de usuario y correo para nueva analista de compras.",
+    "priority": "medium",
+    "effort": "low",
+    "status": "pending"
+  },
+  {
+    "id": "01a10759-54f6-72fc-8621-ea780fdceabb",
+    "description": "El reporte mensual de ventas tarda más de 40 minutos en generarse y bloquea la base de datos de producción mientras corre.",
+    "summary": "Reporte de ventas lento que bloquea la base de datos.",
+    "priority": "medium",
+    "effort": "high",
+    "status": "in progress"
+  },
+  {
+    "id": "01a10759-54f6-72fc-8621-ea792b8a55e2",
+    "description": "Queremos un tablero que muestre en tiempo casi real los pedidos despachados por bodega, para el comité de logística.",
+    "summary": "",
+    "priority": "unassigned",
+    "effort": "unassigned",
+    "status": "pending"
+  },
+  {
+    "id": "01a10759-54f6-72fc-8621-ea7a44af9ba6",
+    "description": "Restablecer la contraseña de la VPN del gerente comercial, que está bloqueada después de varios intentos fallidos.",
+    "summary": "Desbloqueo de la VPN del gerente comercial.",
+    "priority": "medium",
+    "effort": "low",
+    "status": "done"
+  },
+  {
+    "id": "01a10759-54f6-72fc-8621-ea7b364a93ad",
+    "description": "El procedimiento de cierre contable está documentado en un archivo de Word desactualizado. Solicito publicarlo en la base de conocimiento para que el asistente lo pueda consultar.",
+    "summary": "Publicar el procedimiento de cierre contable en la base de conocimiento.",
+    "priority": "low",
+    "effort": "medium",
+    "status": "pending"
+  },
+  {
+    "id": "01a10759-54f6-72fc-8621-ea7cec4dc49d",
+    "description": "Evaluar qué servicio de AWS conviene para almacenar los logs de auditoría por siete años con el menor costo posible.",
+    "summary": "",
+    "priority": "unassigned",
+    "effort": "unassigned",
+    "status": "pending"
+  }
+]
