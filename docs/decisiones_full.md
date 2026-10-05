@@ -797,12 +797,11 @@ La prueba exige identificar y mitigar riesgos como el *prompt injection*. Puede 
 
 Se usa Amazon Bedrock Guardrails (paso 12), por ser un servicio administrado y por simplicidad. Solo se activa la detección y el bloqueo de ataques de *prompt injection*: es lo que exige la prueba, y agregar más filtros aumenta el costo.
 
-El guardrail se aplica en dos puntos de las conversaciones entre el usuario y los agentes:
+El guardrail lo gestiona Strands: se asocia al modelo de cada agente y se envía en cada invocación, evaluando solo el último mensaje. Está configurado para reemplazar la entrada y la salida por el mensaje de bloqueo cuando interviene. La respuesta del modelo no se revisa aparte: el filtro de ataques de *prompt* de Bedrock solo evalúa contenido de entrada (su intensidad de salida es `NONE`).
 
-* **Entrada:** Strands envía el guardrail en cada invocación del modelo y está configurado para reemplazar la entrada y la salida por el mensaje de bloqueo cuando el guardrail interviene. De la entrada solo se evalúa el último mensaje del usuario.
-* **Salida:** el filtro de ataques de *prompt* de Bedrock solo evalúa contenido de entrada (su intensidad de salida debe ser `NONE`). Por eso, la respuesta final del swarm se envía a la API `ApplyGuardrail` como contenido de entrada, con el mismo guardrail. Así se detecta una instrucción inyectada desde la web o la base de conocimiento que llegue a la respuesta del modelo.
+La intensidad de entrada es `MEDIUM`, no `HIGH`. El swarm agrega al último mensaje sus propias instrucciones de coordinación ("You have access to swarm coordination tools..."), y con `HIGH` el filtro las bloquea con confianza baja aunque la pregunta del usuario sea inocua. Se comprobó con `ApplyGuardrail`: la pregunta sola pasa y el contexto del swarm se bloquea con `HIGH`. Con `MEDIUM` solo se bloquean las detecciones de confianza media o alta.
 
-Si se detecta un *prompt injection* en cualquiera de los dos puntos, el agente no entrega una respuesta exitosa al ataque; en su lugar le informa al usuario que la solicitud fue bloqueada, con un mensaje como "Esta respuesta fue bloqueada por los guardrails".
+Si se detecta un *prompt injection*, el agente no entrega una respuesta exitosa al ataque; en su lugar le informa al usuario que la solicitud fue bloqueada, con un mensaje como "Esta respuesta fue bloqueada por los guardrails".
 
 ### Consecuencias
 
@@ -815,13 +814,12 @@ Si se detecta un *prompt injection* en cualquiera de los dos puntos, el agente n
 #### Negativas
 
 * No hay filtrado de PII, temas denegados ni verificación de *grounding* a nivel de guardrail.
-* La revisión de la salida es una llamada adicional a `ApplyGuardrail` por turno, que suma latencia y unidades de texto cobradas.
-* El filtro de ataques de *prompt* está pensado para mensajes de usuario. Sobre la respuesta del modelo detecta instrucciones inyectadas que se repiten en ella, pero no una inyección que solo cambie el comportamiento del agente sin dejar rastro en el texto.
+* La respuesta del modelo no se revisa: una instrucción inyectada desde la web o la base de conocimiento que llegue a la salida no se detecta, porque el filtro de ataques de *prompt* solo evalúa entradas.
+* Con intensidad `MEDIUM`, el filtro deja pasar ataques que detecta con confianza baja.
 
 ### Cumplimiento
 
-* El guardrail de Bedrock está configurado solo con el filtro de ataques de *prompt* y se aplica a las invocaciones del modelo a través de Strands, con la redacción de entrada y de salida activadas.
-* La respuesta final de cada turno pasa por `ApplyGuardrail` con `source="INPUT"` antes de entregarse al usuario.
+* El guardrail de Bedrock está configurado solo con el filtro de ataques de *prompt*, con intensidad de entrada `MEDIUM`, y se aplica a las invocaciones del modelo a través de Strands, con la redacción de entrada y de salida activadas.
 * Cuando el guardrail interviene, la respuesta al usuario indica explícitamente que fue bloqueada por los guardrails.
 * Los turnos bloqueados se registran para auditoría, en el historial y en el contexto de la conversación: el mensaje del usuario y el mensaje de bloqueo (ver ADR-017).
 

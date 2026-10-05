@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import boto3
 from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
 from strands import Agent
 from strands.models import BedrockModel
@@ -12,7 +11,6 @@ from strands.multiagent import Swarm
 from strands.tools.mcp import MCPClient
 
 from swarm_agent.conversation import extract_sources, normalize_history, partition_tools
-from swarm_agent.guardrail import contains_prompt_attack
 from swarm_agent.settings import AgentSettings
 
 logger = logging.getLogger(__name__)
@@ -62,10 +60,10 @@ def list_all_tools(mcp: MCPClient) -> list:
 
 
 def _model(settings: AgentSettings) -> BedrockModel:
-    # ADR-026: Strands aplica el guardrail en cada invocación del modelo. De la entrada solo se evalúa el último
-    # mensaje del usuario, para que el historial o los resultados de herramientas no lo disparen. Si el
-    # guardrail interviene, la entrada y la salida se reemplazan por el mensaje de bloqueo. La respuesta final
-    # se revisa aparte en run_turn, porque el filtro de ataques de prompt no evalúa la salida.
+    # ADR-026: Strands aplica el guardrail en cada invocación del modelo y evalúa solo el último mensaje. Ese mensaje
+    # incluye el contexto de coordinación que agrega el swarm, que con intensidad HIGH el filtro de ataques de prompt
+    # marca con confianza baja; por eso el guardrail usa intensidad MEDIUM. Si interviene, la entrada y la salida se
+    # reemplazan por el mensaje de bloqueo.
     return BedrockModel(
         model_id=settings.model_id,
         region_name=settings.region,
@@ -167,13 +165,7 @@ def run_turn(
     if isinstance(agent_result, Exception) or agent_result is None:
         raise RuntimeError(f"El swarm terminó sin respuesta (estado {result.status})")
 
-    # ADR-026: la respuesta también pasa por el filtro de ataques de prompt, por si una instrucción inyectada
-    # desde la web o la base de conocimiento llegó a la salida del modelo.
     answer = str(agent_result).strip()
-    bedrock = boto3.client("bedrock-runtime", region_name=settings.region)
-    if contains_prompt_attack(bedrock, settings.guardrail_id, settings.guardrail_version, answer):
-        logger.warning("El guardrail bloqueó la respuesta del modelo")
-        return TurnResult(answer=settings.blocked_message, blocked=True, agents=visited)
 
     sources = []
     for agent in agents.values():

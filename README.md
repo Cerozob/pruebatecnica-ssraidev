@@ -123,6 +123,16 @@ cd frontend && pnpm install && pnpm test && pnpm lint && pnpm build
 
 Para ejecutar el frontend contra un despliegue existente, crea `frontend/public/config.json` a partir de `frontend/public/config.json.example` con las salidas de los stacks y ejecuta `pnpm dev` (`http://localhost:5173`, ya registrado como URL de retorno en Cognito).
 
+Para ejecutar la evaluación agéntica en Docker local, sin Step Functions ni Fargate, con los stacks `*-Agents` y `*-Evaluation` ya desplegados:
+
+```powershell
+.\scripts\evaluacion-local.ps1                  # credenciales activas de la terminal
+.\scripts\evaluacion-local.ps1 -Perfil default  # o un perfil de la CLI
+.\scripts\evaluacion-local.ps1 -SoloConstruir   # solo construye la imagen, sin tocar AWS
+```
+
+El script construye la imagen de `agents/Dockerfile.evaluation` para la arquitectura local, busca la tabla de evaluaciones en el stack `*-Evaluation`, pasa al contenedor las mismas variables de entorno que la tarea de Fargate (nombres de los parámetros de SSM, tabla y destinos del gateway) y las credenciales temporales de la terminal. Registra la evaluación con el ID `local-<fecha>`, así que el progreso y los resultados se ven en el frontend igual que una evaluación lanzada desde allí. Tiene el mismo costo de modelos, y no respeta el límite de una evaluación a la vez de la API. Las credenciales no se renuevan dentro del contenedor: si vencen antes de terminar los 15 casos, la evaluación queda en `FAILED`.
+
 ### Estructura del repositorio
 
 | Ruta | Contenido |
@@ -131,4 +141,5 @@ Para ejecutar el frontend contra un despliegue existente, crea `frontend/public/
 | `backend/` | Lambdas de Powertools: API (`api/`), herramientas de solicitudes (`tools/`) y triggers (`triggers/`). |
 | `agents/` | Swarm de Strands para AgentCore Runtime (`swarm_agent/`) y evaluación agéntica (`evaluation/`). |
 | `frontend/` | Frontend en React con Cloudscape. |
+| `scripts/` | Scripts de apoyo, como la evaluación agéntica en Docker local. |
 | `assets/` | Documentos de ejemplo de la base de conocimiento y solicitudes de ejemplo. |

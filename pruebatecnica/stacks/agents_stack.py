@@ -194,9 +194,10 @@ class AgentsStack(Stack):
             blocked_outputs_messaging=BLOCKED_MESSAGE,
             content_policy_config=bedrock.CfnGuardrail.ContentPolicyConfigProperty(
                 filters_config=[
-                    # Los ataques de prompt solo se evalúan en la entrada; la salida debe ser NONE.
+                    # Los ataques de prompt solo se evalúan en la entrada; la salida debe ser NONE. Con HIGH, el
+                    # contexto de coordinación que el swarm agrega al mensaje se bloquea con confianza baja.
                     bedrock.CfnGuardrail.ContentFilterConfigProperty(
-                        type="PROMPT_ATTACK", input_strength="HIGH", output_strength="NONE"
+                        type="PROMPT_ATTACK", input_strength="MEDIUM", output_strength="NONE"
                     )
                 ]
             ),
@@ -205,7 +206,8 @@ class AgentsStack(Stack):
             self,
             "PromptAttackGuardrailVersion",
             guardrail_identifier=guardrail.attr_guardrail_id,
-            description="Versión publicada para los agentes",
+            # Cambiar la descripción reemplaza la versión; así un cambio en el guardrail publica una nueva.
+            description="Versión publicada para los agentes (ataques de prompt con intensidad MEDIUM)",
         )
         return guardrail, version
 
