@@ -8,6 +8,7 @@ import SpaceBetween from "@cloudscape-design/components/space-between";
 import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import type { Message, Source } from "../api/types";
 import { agentLabel } from "../utils/format";
+import { MarkdownContent } from "./MarkdownContent";
 
 function SourceItem({ source }: { source: Source }) {
   if (source.type === "web") {
@@ -47,7 +48,12 @@ export function ChatMessage({ message }: { message: Message }) {
       <SpaceBetween size="xs">
         {message.blocked && <StatusIndicator type="warning">Bloqueado por los guardrails</StatusIndicator>}
         {message.error && <StatusIndicator type="error">Error del asistente</StatusIndicator>}
-        <div style={{ whiteSpace: "pre-wrap" }}>{message.content}</div>
+        {/* Los agentes responden en Markdown; el texto del usuario se muestra tal cual lo escribió. */}
+        {isUser ? (
+          <div style={{ whiteSpace: "pre-wrap" }}>{message.content}</div>
+        ) : (
+          <MarkdownContent>{message.content}</MarkdownContent>
+        )}
         {!isUser && (message.agents?.length ?? 0) > 0 && (
           <SpaceBetween size="xxs" direction="horizontal">
             {message.agents!.map((agent, index) => (
