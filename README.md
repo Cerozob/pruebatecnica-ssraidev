@@ -9,7 +9,7 @@ Solución a la prueba técnica. Agente RAG empresarial sobre AWS.
 * Mejoras futuras: [docs/mejoras-futuras.md](docs/mejoras-futuras.md)
 * Riesgos y consideraciones para producción: [docs/riesgos-produccion.md](docs/riesgos-produccion.md)
 
-> **Aviso:** la redacción y generación de la documentación fueron asistidas por IA Generativa, y yo revisé todo el contenido y me encargué 100% del diseño de la solución.
+> **Aviso:** la redacción y generación de la documentación fueron asistidas por IA Generativa, y yo revisé todo el contenido y me encargué 100% del diseño de la solución. Hay más detalles en el docoumento de uso de IA Generativa: [docs/uso-de-ia-generativa.md](docs/uso-de-ia-generativa.md)
 
 ## Arquitectura
 

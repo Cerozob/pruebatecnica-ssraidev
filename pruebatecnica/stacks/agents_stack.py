@@ -425,7 +425,8 @@ class AgentsStack(Stack):
                 )
             ],
             manage_delivery_resource_policy=False,
-            tracing_enabled=True,
+            # La entrega de trazas a X-Ray exige CloudWatch Transaction Search, que no se activa en el despliegue.
+            tracing_enabled=False,
         )
 
     def grant_agent_permissions(self, grantee: iam.IGrantable) -> None:

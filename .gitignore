@@ -18,3 +18,6 @@ frontend/dist
 # Herramientas
 .ruff_cache
 public/config.json
+
+docs/enunciado.docx
+docs/enunciado.pdf
