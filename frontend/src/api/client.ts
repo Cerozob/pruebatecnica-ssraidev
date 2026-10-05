@@ -5,7 +5,6 @@ import type {
   EvaluationSummary,
   LogGroup,
   SendMessageResponse,
-  SyncResponse,
   UploadUrlResponse,
 } from "./types";
 
@@ -97,10 +96,6 @@ export class ApiClient {
         size: file.size,
       }),
     });
-  }
-
-  syncKnowledgeBase(): Promise<SyncResponse> {
-    return this.json("knowledge-base/sync", { method: "POST" });
   }
 
   listLogGroups(): Promise<{ logGroups: LogGroup[] }> {

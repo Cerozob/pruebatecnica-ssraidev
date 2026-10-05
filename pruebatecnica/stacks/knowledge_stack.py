@@ -5,6 +5,7 @@ from aws_cdk import aws_bedrock as bedrock
 from aws_cdk import aws_events as events
 from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_iam as iam
+from aws_cdk import aws_lambda_event_sources as lambda_events
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_s3_deployment as s3deploy
 from aws_cdk import aws_sqs as sqs
@@ -18,6 +19,8 @@ from pruebatecnica.constructs.runtime_parameter import RuntimeParameter
 
 SAMPLE_DOCS_PREFIX = "ejemplos/"
 UPLOADS_PREFIX = "documentos/"
+SYNC_RETRY_MINUTES = 5
+SYNC_MAX_RECEIVES = 12
 
 
 def documents_bucket_name(config: AppConfig, stack: Stack) -> str:
@@ -69,11 +72,19 @@ class KnowledgeStack(Stack):
             "DocumentsDataSource",
             name=f"{config.project_name}-documentos",
             knowledge_base_id=self.knowledge_base.attr_knowledge_base_id,
-            data_deletion_policy="DELETE",
+            # Una base MANAGED solo admite el conector administrado (no el tipo "S3") y no usa data_deletion_policy.
             data_source_configuration=bedrock.CfnDataSource.DataSourceConfigurationProperty(
-                type="S3",
-                s3_configuration=bedrock.CfnDataSource.S3DataSourceConfigurationProperty(
-                    bucket_arn=self.documents_bucket.bucket_arn,
+                type="MANAGED_KNOWLEDGE_BASE_CONNECTOR",
+                managed_knowledge_base_connector_configuration=bedrock.CfnDataSource.ManagedKnowledgeBaseConnectorConfigurationProperty(
+                    connector_parameters={
+                        "type": "S3",
+                        "version": "1",
+                        # La API exige bucketOwnerAccountId aunque el bucket sea de la misma cuenta.
+                        "connectionConfiguration": {
+                            "bucketName": self.documents_bucket.bucket_name,
+                            "bucketOwnerAccountId": self.account,
+                        },
+                    },
                 ),
             ),
         )
@@ -176,7 +187,12 @@ class KnowledgeStack(Stack):
         return knowledge_base
 
     def _sync_on_upload(self, config: AppConfig) -> events.Rule:
-        """ADR-010: cada carga o borrado lanza una sincronización incremental."""
+        """ADR-010: cada carga o borrado lanza una sincronización incremental, sin perder cambios.
+
+        EventBridge deja los cambios en una cola. Si hay una sincronización en curso que empezó antes del cambio,
+        el Lambda falla el lote y SQS lo reintenta tras el tiempo de visibilidad, hasta que la sincronización
+        termina y se puede lanzar otra que incluya el archivo.
+        """
         # Recibe los eventos que no se pudieron entregar o procesar, para revisarlos a mano.
         dead_letters = sqs.Queue(
             self,
@@ -187,6 +203,15 @@ class KnowledgeStack(Stack):
         )
         for rule in ("AwsSolutions-SQS3", "Serverless-SQSRedrivePolicy"):
             acknowledge(dead_letters, rule, "Esta cola es la DLQ de la sincronización; no necesita otra DLQ.")
+        changes = sqs.Queue(
+            self,
+            "SyncQueue",
+            enforce_ssl=True,
+            encryption=sqs.QueueEncryption.SQS_MANAGED,
+            # Espera entre reintentos mientras termina la sincronización en curso; unas 12 veces (una hora).
+            visibility_timeout=Duration.minutes(SYNC_RETRY_MINUTES),
+            dead_letter_queue=sqs.DeadLetterQueue(queue=dead_letters, max_receive_count=SYNC_MAX_RECEIVES),
+        )
         sync = PythonFunction(
             self,
             "SyncOnUpload",
@@ -206,6 +231,15 @@ class KnowledgeStack(Stack):
         self.grant_sync(sync.function)
         self.knowledge_base_id_param.grant_read(sync.function)
         self.data_source_id_param.grant_read(sync.function)
+        # Un lote agrupa las cargas de unos segundos en una sola sincronización.
+        sync.function.add_event_source(
+            lambda_events.SqsEventSource(changes, batch_size=10, max_batching_window=Duration.seconds(30))
+        )
+        acknowledge(
+            sync.function,
+            "Serverless-LambdaEventSourceMappingDestination",
+            "Con SQS, los mensajes que agotan los reintentos van a la DLQ por la política de redrive de la cola.",
+        )
 
         return events.Rule(
             self,
@@ -216,7 +250,7 @@ class KnowledgeStack(Stack):
                 detail_type=["Object Created", "Object Deleted"],
                 detail={"bucket": {"name": [self.documents_bucket.bucket_name]}},
             ),
-            targets=[targets.LambdaFunction(sync.function, dead_letter_queue=dead_letters, retry_attempts=2)],
+            targets=[targets.SqsQueue(changes, dead_letter_queue=dead_letters, retry_attempts=2)],
         )
 
     def grant_sync(self, grantee: iam.IGrantable) -> None:

@@ -41,12 +41,12 @@ class ObservabilityStack(Stack):
         """ADR-038: registro de invocaciones de modelos de Bedrock hacia CloudWatch y S3.
 
         El registro queda activo aunque se elimine el stack: el bucket, el log group y el rol se retienen
-        y el custom resource no borra la configuración de la cuenta.
+        y el custom resource no borra la configuración de la cuenta. Ninguno de los recursos retenidos tiene
+        nombre fijo, para que un nuevo despliegue después de `cdk destroy` no choque con ellos.
         """
         log_group = logs.LogGroup(
             self,
             "ModelInvocationLogGroup",
-            log_group_name=f"/aws/bedrock/{config.project_name}/model-invocations",
             retention=logs.RetentionDays.THREE_MONTHS,
             removal_policy=RemovalPolicy.RETAIN,
         )
@@ -93,7 +93,11 @@ class ObservabilityStack(Stack):
         role.add_to_policy(
             iam.PolicyStatement(
                 actions=["logs:CreateLogStream", "logs:PutLogEvents"],
-                resources=[f"{log_group.log_group_arn}:log-stream:aws/bedrock/modelinvocations"],
+                # `log_group_arn` termina en ":*" y produciría un ARN de stream inválido que Bedrock rechaza.
+                resources=[
+                    f"arn:{self.partition}:logs:{self.region}:{self.account}:log-group:"
+                    f"{log_group.log_group_name}:log-stream:aws/bedrock/modelinvocations"
+                ],
             )
         )
         role.apply_removal_policy(RemovalPolicy.RETAIN)

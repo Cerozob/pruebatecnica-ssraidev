@@ -4,6 +4,7 @@ from aws_lambda_powertools import Logger
 from aws_lambda_powertools.logging import correlation_paths
 
 from common import evaluations
+from common.auth import require_admin
 from common.http import build_resolver
 
 logger = Logger()
@@ -12,6 +13,7 @@ app = build_resolver()
 
 @app.get("/evaluations")
 def list_evaluations() -> dict:
+    require_admin(app)
     items: list[dict] = []
     # Pocas evaluaciones y sin resultados detallados: un Scan con proyección es suficiente.
     kwargs = {
@@ -24,6 +26,7 @@ def list_evaluations() -> dict:
         if "LastEvaluatedKey" not in page:
             break
         kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
+    items = [item for item in items if item["evaluationId"] != evaluations.START_LOCK_ID]
     ordered = sorted(items, key=lambda item: item.get("createdAt", ""), reverse=True)
     return {"evaluations": [evaluations.summarize(item) for item in ordered]}
 

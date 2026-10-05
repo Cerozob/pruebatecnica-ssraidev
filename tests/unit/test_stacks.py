@@ -62,6 +62,16 @@ def test_no_policy_allows_deleting_requests(stacks):
             assert "dynamodb:*" not in json.dumps(policy)
 
 
+def test_summary_tool_can_read_the_request(stacks):
+    # La herramienta lee la descripción antes de guardar el resumen.
+    policies = resources(stacks["agents"], "AWS::IAM::Policy").values()
+    summary = [p for p in policies if "UpdateRequestSummary" in json.dumps(p["Properties"]["Roles"])]
+    assert len(summary) == 1
+    statements = summary[0]["Properties"]["PolicyDocument"]["Statement"]
+    actions = {a for s in statements for a in (s["Action"] if isinstance(s["Action"], list) else [s["Action"]])}
+    assert {"dynamodb:GetItem", "dynamodb:UpdateItem"} <= actions
+
+
 def test_gateway_exposes_request_tools_kb_and_restricted_web_search(stacks):
     targets = resources(stacks["agents"], "AWS::BedrockAgentCore::GatewayTarget")
     assert len(targets) == 9
@@ -73,7 +83,7 @@ def test_gateway_exposes_request_tools_kb_and_restricted_web_search(stacks):
 def test_every_api_method_requires_cognito(stacks):
     methods = resources(stacks["api"], "AWS::ApiGateway::Method").values()
     secured = [m for m in methods if m["Properties"]["HttpMethod"] != "OPTIONS"]
-    assert len(secured) == 11
+    assert len(secured) == 10
     assert all(m["Properties"]["AuthorizationType"] == "COGNITO_USER_POOLS" for m in secured)
 
 
@@ -87,6 +97,21 @@ def test_project_lambdas_use_python_arm64_with_powertools(stacks):
     assert len(functions) == 20
     assert all(f["Architectures"] == ["arm64"] for f in functions)
     assert all(f["Layers"] for f in functions)
+
+
+def test_retained_log_groups_have_no_fixed_name(stacks):
+    # Un nombre fijo en un recurso retenido haría fallar un nuevo despliegue después de cdk destroy.
+    for template in stacks.values():
+        for log_group in resources(template, "AWS::Logs::LogGroup").values():
+            if log_group.get("DeletionPolicy") == "Retain":
+                assert "LogGroupName" not in log_group["Properties"]
+
+
+def test_cognito_has_admin_and_user_groups_with_default_assignment(stacks):
+    groups = {g["Properties"]["GroupName"] for g in resources(stacks["auth"], "AWS::Cognito::UserPoolGroup").values()}
+    assert groups == {"admins", "users"}
+    pool = next(iter(resources(stacks["auth"], "AWS::Cognito::UserPool").values()))["Properties"]
+    assert set(pool["LambdaConfig"]) >= {"PreSignUp", "PostConfirmation"}
 
 
 def test_no_nat_gateways(stacks):

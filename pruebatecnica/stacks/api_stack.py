@@ -17,6 +17,7 @@ from pruebatecnica.constructs.nag import acknowledge, acknowledge_wildcards
 from pruebatecnica.constructs.python_function import PythonFunction, retention
 from pruebatecnica.constructs.runtime_parameter import RuntimeParameter
 from pruebatecnica.stacks.agents_stack import AgentsStack
+from pruebatecnica.stacks.auth_stack import ADMINS_GROUP
 from pruebatecnica.stacks.evaluation_stack import EvaluationStack
 from pruebatecnica.stacks.knowledge_stack import UPLOADS_PREFIX, KnowledgeStack, documents_bucket_name
 
@@ -164,21 +165,6 @@ class ApiStack(Stack):
         knowledge.documents_bucket_param.grant_read(upload_url)
         upload_url.add_environment("DOCUMENTS_BUCKET_PARAM", knowledge.documents_bucket_param.parameter_name)
 
-        sync = self._endpoint(
-            Endpoint(
-                "SyncKnowledgeBase",
-                "POST",
-                "/knowledge-base/sync",
-                "api.sync_knowledge_base.handler",
-                "Lanza una sincronizacion manual de la base de conocimiento",
-            )
-        )
-        knowledge.grant_sync(sync)
-        knowledge.knowledge_base_id_param.grant_read(sync)
-        knowledge.data_source_id_param.grant_read(sync)
-        sync.add_environment("KNOWLEDGE_BASE_ID_PARAM", knowledge.knowledge_base_id_param.parameter_name)
-        sync.add_environment("DATA_SOURCE_ID_PARAM", knowledge.data_source_id_param.parameter_name)
-
         self._log_endpoints()
         self._evaluation_endpoints(evaluation)
 
@@ -307,6 +293,8 @@ class ApiStack(Stack):
             )
         )
         for function in (list_groups, get_events):
+            # ADR-043: solo el grupo de administradores puede leer logs.
+            function.add_environment("ADMINS_GROUP", ADMINS_GROUP)
             self.log_tag_filters_param.grant_read(function)
             function.add_environment("LOG_TAG_FILTERS_PARAM", self.log_tag_filters_param.parameter_name)
 
@@ -344,7 +332,8 @@ class ApiStack(Stack):
             )
 
     def _evaluation_endpoints(self, evaluation: EvaluationStack) -> None:
-        environment = {"EVALUATIONS_TABLE_NAME": evaluation.evaluations_table.table_name}
+        # ADR-043: solo el grupo de administradores puede lanzar y consultar evaluaciones.
+        environment = {"EVALUATIONS_TABLE_NAME": evaluation.evaluations_table.table_name, "ADMINS_GROUP": ADMINS_GROUP}
 
         start = self._endpoint(
             Endpoint(
@@ -359,6 +348,8 @@ class ApiStack(Stack):
             iam.PolicyStatement(actions=["dynamodb:PutItem"], resources=[evaluation.evaluations_table.table_arn])
         )
         evaluation.state_machine.grant_start_execution(start)
+        # Para comprobar que no haya otra evaluación en curso antes de iniciar una.
+        evaluation.state_machine.grant(start, "states:ListExecutions")
         start.add_environment("EVALUATION_STATE_MACHINE_ARN", evaluation.state_machine.state_machine_arn)
 
         list_evaluations = self._endpoint(

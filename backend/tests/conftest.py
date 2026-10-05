@@ -24,11 +24,13 @@ def aws(monkeypatch):
     from aws_lambda_powertools.utilities import parameters
 
     from common import chat, conversations, evaluations, log_viewer, requests_repo
+    from triggers import post_confirmation
 
     for module in (conversations, evaluations, requests_repo):
         monkeypatch.setattr(module, "_table", None)
     monkeypatch.setattr(log_viewer, "_logs", None)
     monkeypatch.setattr(chat, "_agentcore", None)
+    monkeypatch.setattr(post_confirmation, "_cognito", None)
     parameters.clear_caches()
     with mock_aws():
         yield

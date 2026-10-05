@@ -6,6 +6,8 @@ La API es una API REST de Amazon API Gateway (ver [ADR-008](decisiones_full.md#a
 
 Todos los endpoints exigen el ID token de Amazon Cognito en el encabezado `Authorization`. El *authorizer* de Cognito rechaza las peticiones sin un token válido con `401`.
 
+Los endpoints de logs y de evaluaciones son solo para el grupo `admins` de Cognito (ver [ADR-043](decisiones_full.md#adr-043-grupos-de-cognito-para-separar-administradores-y-usuarios)); para los demás usuarios responden `403`.
+
 ## Endpoints
 
 ### Conversación
@@ -26,7 +28,6 @@ La respuesta es síncrona (ver [ADR-018](decisiones_full.md#adr-018-respuestas-s
 | Método | Ruta | Descripción |
 |---|---|---|
 | `POST` | `/documents/upload-url` | Devuelve una URL prefirmada para subir un documento directamente al bucket de S3. La carga dispara la sincronización de la base de conocimiento. |
-| `POST` | `/knowledge-base/sync` | Lanza una sincronización manual de la base de conocimiento. Si ya hay una en curso, no lanza otra. |
 
 ### Logs
 
@@ -41,7 +42,7 @@ El `logGroupId` es el nombre del *log group* en base64url, porque los nombres ti
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `POST` | `/evaluations` | Inicia una evaluación agéntica. |
+| `POST` | `/evaluations` | Inicia una evaluación agéntica. Solo puede haber una en curso: si ya hay otra, responde `409`. |
 | `GET` | `/evaluations` | Lista las evaluaciones anteriores y su estado. |
 | `GET` | `/evaluations/{evaluationId}` | Devuelve el progreso y los resultados de una evaluación. |
 
@@ -53,7 +54,9 @@ Las solicitudes no tienen endpoints: solo se gestionan a través del agente (ver
 |---|---|
 | `400` | La petición no cumple el esquema esperado. |
 | `401` | Falta el token o no es válido. |
+| `403` | El usuario no pertenece al grupo `admins` (logs y evaluaciones). |
 | `404` | El recurso no existe o no pertenece al usuario. |
+| `409` | Ya hay una evaluación en curso. |
 | `429` | Se superó el límite de tasa de API Gateway. |
 | `500` | Error interno. |
 | `502` | El asistente no pudo responder. |

@@ -3,6 +3,7 @@
 from aws_lambda_powertools import Logger
 from aws_lambda_powertools.logging import correlation_paths
 
+from common.auth import require_admin
 from common.http import build_resolver
 from common.log_viewer import list_tagged_log_groups, log_group_id
 
@@ -12,6 +13,7 @@ app = build_resolver()
 
 @app.get("/logs/groups")
 def list_log_groups() -> dict:
+    require_admin(app)
     # El id va en la ruta de los eventos; el nombre tiene barras (ver get_log_events.py).
     return {"logGroups": [{"name": name, "id": log_group_id(name)} for name in list_tagged_log_groups()]}
 

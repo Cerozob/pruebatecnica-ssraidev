@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import boto3
 from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
 from strands import Agent
 from strands.models import BedrockModel
@@ -11,6 +12,7 @@ from strands.multiagent import Swarm
 from strands.tools.mcp import MCPClient
 
 from swarm_agent.conversation import extract_sources, normalize_history, partition_tools
+from swarm_agent.guardrail import contains_prompt_attack
 from swarm_agent.settings import AgentSettings
 
 logger = logging.getLogger(__name__)
@@ -60,8 +62,10 @@ def list_all_tools(mcp: MCPClient) -> list:
 
 
 def _model(settings: AgentSettings) -> BedrockModel:
-    # ADR-026: Strands aplica el guardrail en cada invocación del modelo. Solo se evalúa el último
-    # mensaje del usuario, para que el historial o los resultados de herramientas no lo disparen.
+    # ADR-026: Strands aplica el guardrail en cada invocación del modelo. De la entrada solo se evalúa el último
+    # mensaje del usuario, para que el historial o los resultados de herramientas no lo disparen. Si el
+    # guardrail interviene, la entrada y la salida se reemplazan por el mensaje de bloqueo. La respuesta final
+    # se revisa aparte en run_turn, porque el filtro de ataques de prompt no evalúa la salida.
     return BedrockModel(
         model_id=settings.model_id,
         region_name=settings.region,
@@ -73,6 +77,8 @@ def _model(settings: AgentSettings) -> BedrockModel:
         guardrail_latest_message=True,
         guardrail_redact_input=True,
         guardrail_redact_input_message=settings.blocked_message,
+        guardrail_redact_output=True,
+        guardrail_redact_output_message=settings.blocked_message,
     )
 
 
@@ -136,8 +142,9 @@ def run_turn(
         entry_point=agents[CONVERSATIONAL],
         max_handoffs=6,
         max_iterations=10,
-        execution_timeout=600.0,
-        node_timeout=300.0,
+        # Por debajo de la espera de 280 s del Lambda de chat, para que todo turno llegue al historial.
+        execution_timeout=240.0,
+        node_timeout=240.0,
         repetitive_handoff_detection_window=6,
         repetitive_handoff_min_unique_agents=2,
         trace_attributes=trace_attributes,
@@ -160,6 +167,14 @@ def run_turn(
     if isinstance(agent_result, Exception) or agent_result is None:
         raise RuntimeError(f"El swarm terminó sin respuesta (estado {result.status})")
 
+    # ADR-026: la respuesta también pasa por el filtro de ataques de prompt, por si una instrucción inyectada
+    # desde la web o la base de conocimiento llegó a la salida del modelo.
+    answer = str(agent_result).strip()
+    bedrock = boto3.client("bedrock-runtime", region_name=settings.region)
+    if contains_prompt_attack(bedrock, settings.guardrail_id, settings.guardrail_version, answer):
+        logger.warning("El guardrail bloqueó la respuesta del modelo")
+        return TurnResult(answer=settings.blocked_message, blocked=True, agents=visited)
+
     sources = []
     for agent in agents.values():
         sources.extend(
@@ -170,4 +185,4 @@ def run_turn(
             )
         )
     unique = {source["uri"]: source for source in reversed(sources)}
-    return TurnResult(answer=str(agent_result).strip(), blocked=False, agents=visited, sources=list(unique.values()))
+    return TurnResult(answer=answer, blocked=False, agents=visited, sources=list(unique.values()))

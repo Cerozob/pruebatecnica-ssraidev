@@ -51,6 +51,9 @@ export default function EvaluationsPage() {
     return () => clearInterval(timer);
   }, [active, load]);
 
+  // Una evaluación a la vez; la API también lo exige (409).
+  const inProgress = evaluations.some((item) => item.status === "PENDING" || item.status === "RUNNING");
+
   const start = async () => {
     setStarting(true);
     try {
@@ -84,11 +87,17 @@ export default function EvaluationsPage() {
         header={
           <Header
             variant="awsui-h1-sticky"
-            description="Precisión, groundedness, información insuficiente y prompt injection, con un juez que no es de Anthropic."
+            description="Precisión, groundedness, información insuficiente y prompt injection, calificados por un modelo juez."
             actions={
               <SpaceBetween size="xs" direction="horizontal">
                 <Button iconName="refresh" ariaLabel="Actualizar" onClick={() => void load()} />
-                <Button variant="primary" onClick={() => void start()} loading={starting}>
+                <Button
+                  variant="primary"
+                  onClick={() => void start()}
+                  loading={starting}
+                  disabled={inProgress}
+                  disabledReason="Ya hay una evaluación en curso."
+                >
                   Iniciar evaluación
                 </Button>
               </SpaceBetween>

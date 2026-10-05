@@ -47,12 +47,6 @@ export interface LogGroup {
   id: string;
 }
 
-export interface SyncResponse {
-  started: boolean;
-  ingestionJobId: string | null;
-  message: string;
-}
-
 export type EvaluationStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
 
 export interface EvaluationSummaryMetrics {

@@ -15,6 +15,7 @@ from aws_lambda_powertools.event_handler.exceptions import NotFoundError
 from aws_lambda_powertools.event_handler.openapi.params import Path, Query
 from aws_lambda_powertools.logging import correlation_paths
 
+from common.auth import require_admin
 from common.http import build_resolver
 from common.log_viewer import is_app_log_group, log_group_name, logs_client
 
@@ -35,6 +36,7 @@ def get_log_events(
     hours: Annotated[int, Query(ge=1, le=168, description="Horas hacia atrás")] = 24,
     limit: Annotated[int, Query(ge=1, le=1000, description="Máximo de eventos")] = 200,
 ):
+    require_admin(app)
     name = log_group_name(logGroupId)
     arn_parts = app.lambda_context.invoked_function_arn.split(":")
     region, account = arn_parts[3], arn_parts[4]

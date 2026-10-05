@@ -27,7 +27,7 @@ def log_group_id(name: str) -> str:
 def log_group_name(group_id: str) -> str | None:
     try:
         return base64.urlsafe_b64decode(group_id + "=" * (-len(group_id) % 4)).decode()
-    except (binascii.Error, UnicodeDecodeError):
+    except binascii.Error, UnicodeDecodeError:
         return None
 
 

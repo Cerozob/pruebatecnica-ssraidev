@@ -24,6 +24,7 @@ def api_event(
     path_parameters: dict | None = None,
     query=None,
     user_id: str = USER_ID,
+    groups: list[str] | None = None,
 ):
     """Evento de API Gateway REST como lo entrega el proxy de Lambda."""
     return {
@@ -44,11 +45,19 @@ def api_event(
             "requestId": "request-id",
             "identity": {"sourceIp": "127.0.0.1"},
             # Claims que agrega el authorizer de Cognito.
-            "authorizer": {"claims": {"sub": user_id, "email": f"{user_id}@empresa.com"}},
+            "authorizer": {"claims": _claims(user_id, groups)},
         },
         "body": json.dumps(body) if body is not None else None,
         "isBase64Encoded": False,
     }
+
+
+def _claims(user_id: str, groups: list[str] | None) -> dict:
+    claims = {"sub": user_id, "email": f"{user_id}@empresa.com"}
+    if groups:
+        # El authorizer de API Gateway REST entrega los grupos como texto separado por comas.
+        claims["cognito:groups"] = ",".join(groups)
+    return claims
 
 
 def body_of(response: dict):

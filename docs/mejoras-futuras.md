@@ -9,8 +9,8 @@ Mejoras identificadas durante el diseño que no se implementaron, en su mayoría
 ## Ingesta documental
 
 * **Carga multiparte** para documentos muy grandes y para reanudar cargas interrumpidas ([ADR-009](decisiones_full.md#adr-009-carga-de-documentos-directa-a-s3-con-urls-prefirmadas)).
-* **Sincronización programada** de la base de conocimiento, junto a la manual ([ADR-010](decisiones_full.md#adr-010-sincronización-de-la-base-de-conocimiento-por-eventos)).
-* **Cola de reintentos** para las sincronizaciones fallidas ([ADR-010](decisiones_full.md#adr-010-sincronización-de-la-base-de-conocimiento-por-eventos)).
+* **Sincronización programada** de la base de conocimiento, junto a la sincronización por eventos ([ADR-010](decisiones_full.md#adr-010-sincronización-de-la-base-de-conocimiento-por-eventos)).
+* **Reintento de las sincronizaciones que terminan con error**; los cambios ocurridos durante una sincronización ya se reintentan ([ADR-010](decisiones_full.md#adr-010-sincronización-de-la-base-de-conocimiento-por-eventos)).
 
 ## Conversación
 
@@ -20,6 +20,7 @@ Mejoras identificadas durante el diseño que no se implementaron, en su mayoría
 
 * **Un modelo de mayor calidad** para los agentes, como Claude Sonnet, si los resultados de la evaluación o el presupuesto lo justifican ([ADR-016](decisiones_full.md#adr-016-amazon-nova-2-lite-como-modelo-de-lenguaje)).
 * **Un modelo juez de otra familia** distinta a la de los agentes, para eliminar el sesgo de autoevaluación ([ADR-032](decisiones_full.md#adr-032-amazon-nova-2-lite-también-como-modelo-juez)).
+* **Un modelo de decisión especializado para la prioridad y el esfuerzo**, como Strands Decider en un endpoint de SageMaker con GPU o en Fargate, si el volumen de solicitudes lo justifica y se mide su precisión con solicitudes reales en español ([ADR-022](decisiones_full.md#adr-022-prioridad-y-esfuerzo-los-decide-el-llm-con-niveles-fijos)).
 
 ## Seguridad
 

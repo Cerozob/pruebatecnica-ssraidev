@@ -9,7 +9,7 @@ Solución a la prueba técnica. Agente RAG empresarial sobre AWS.
 * Mejoras futuras: [docs/mejoras-futuras.md](docs/mejoras-futuras.md)
 * Riesgos y consideraciones para producción: [docs/riesgos-produccion.md](docs/riesgos-produccion.md)
 
-> **Aviso:** la redacción y generación de la documentación fueron asistidas por IA Generativa, y yo revisé todo el contenido y me encagué 100% del diseño de la solución.
+> **Aviso:** la redacción y generación de la documentación fueron asistidas por IA Generativa, y yo revisé todo el contenido y me encargué 100% del diseño de la solución.
 
 ## Arquitectura
 
@@ -27,7 +27,7 @@ Toda la solución se despliega en AWS (`us-east-1`). Los números corresponden a
 
 4. **URL prefirmada.** El frontend obtiene la URL prefirmada desde un endpoint dedicado.
 5. **Carga.** El documento se sube al bucket de documentos de S3 usando esa URL.
-6. **Sincronización.** La carga genera un evento que dispara un Lambda para sincronizar la base de conocimiento con el nuevo documento. Si ya hay una sincronización en curso, se omite. Como respaldo ante sincronizaciones fallidas, el frontend ofrece un botón y un endpoint de sincronización manual.
+6. **Sincronización.** Cada carga o borrado en el bucket genera un evento de Amazon EventBridge que queda en una cola de Amazon SQS, y un Lambda procesa la cola por lotes para sincronizar la base de conocimiento. Si hay una sincronización en curso que empezó antes del cambio, el lote vuelve a la cola y se reintenta cada 5 minutos hasta que se puede lanzar otra; los eventos que agotan los reintentos quedan en una cola de mensajes fallidos.
 7. **Sincronización incremental.** La sincronización es incremental y los documentos se leen únicamente del bucket de documentos (detalles de la base de conocimiento en el paso 14).
 
 ### Conversación con el agente
@@ -36,7 +36,7 @@ Toda la solución se despliega en AWS (`us-east-1`). Los números corresponden a
 9. **Converse.** La conversación con el agente ocurre en el endpoint de conversación.
 10. **Swarm de agentes.** Se usa Strands Agents con el patrón *swarm*, desplegado en Amazon Bedrock AgentCore Runtime. El agente conversacional dialoga con el usuario, gestiona las solicitudes y recupera información de la base de conocimiento. El agente de modernización y el agente recomendador de servicios cloud son agentes especializados para esos casos de uso.
 11. **Modelo.** Todos los agentes usan Amazon Nova 2 Lite, por costo: es por mucho el modelo más barato disponible en Amazon Bedrock. El modelo juez de la evaluación es el mismo.
-12. **Guardrails.** Amazon Bedrock Guardrails detecta y bloquea ataques de *prompt injection*. Cuando bloquea uno, el usuario recibe un mensaje indicando que la respuesta fue bloqueada por los guardrails.
+12. **Guardrails.** Amazon Bedrock Guardrails detecta y bloquea ataques de *prompt injection*, tanto en el mensaje del usuario como en la respuesta del modelo. Cuando bloquea uno, el usuario recibe un mensaje indicando que la respuesta fue bloqueada por los guardrails.
 13. **Gateway de herramientas.** Todas las herramientas se exponen a los agentes mediante un gateway MCP de AgentCore.
 14. **Recuperación (RAG).** La herramienta de recuperación consulta la base de conocimiento e incluye las fuentes para referenciarlas en la respuesta. La base de conocimiento es una Amazon Bedrock Knowledge Base administrada: el vector store, los embeddings, el *chunking*, el *parsing*, la ingesta y el almacenamiento los gestiona el servicio.
 15. **Búsqueda web.** Los agentes especializados tienen la herramienta de búsqueda web de AgentCore, con una lista de dominios permitidos limitada a la documentación de AWS y Azure, para evitar desviaciones. El agente conversacional no tiene búsqueda web: responde solo con la información de la base de conocimiento.
@@ -44,7 +44,7 @@ Toda la solución se despliega en AWS (`us-east-1`). Los números corresponden a
 
 ### Evaluación agéntica
 
-17. **Ejecución.** La evaluación agéntica se lanza desde el frontend y corre como una tarea de AWS Fargate orquestada por AWS Step Functions, con Strands Evals y AgentCore Evaluations. Por costo, el modelo juez es el mismo de los agentes, así que puede haber sesgo de autoevaluación (ADR-032). Las pruebas se describen en [docs/evaluacion.md](docs/evaluacion.md). Ejecuta todas las evaluaciones requeridas: precisión, *groundedness*, respuesta adecuada cuando no hay información suficiente y *prompt injection*.
+17. **Ejecución.** La evaluación agéntica se lanza desde el frontend y corre como una tarea de AWS Fargate orquestada por AWS Step Functions, con Strands Evals y AgentCore Evaluations. La tarea no invoca AgentCore Runtime: ejecuta el mismo swarm dentro del contenedor, con el mismo modelo, gateway de herramientas y guardrail, para capturar sus trazas de OpenTelemetry completas. Por eso la evaluación no usa AgentCore Memory: cada caso es una conversación nueva. Por costo, el modelo juez es el mismo de los agentes, así que puede haber sesgo de autoevaluación (ADR-032). Las pruebas se describen en [docs/evaluacion.md](docs/evaluacion.md). Ejecuta todas las evaluaciones requeridas: precisión, *groundedness*, respuesta adecuada cuando no hay información suficiente y *prompt injection*.
 18. **Resultados.** El progreso y los resultados se registran en una tabla de DynamoDB de evaluaciones y se visualizan en el frontend.
 19. **Consulta.** Un endpoint de la API permite leer los resultados de evaluaciones anteriores.
 
@@ -53,7 +53,7 @@ Toda la solución se despliega en AWS (`us-east-1`). Los números corresponden a
 20. **CDK.** La solución se despliega con AWS CDK en Python, en varios stacks separados por dominio. Las buenas prácticas de seguridad se validan con los paquetes de reglas de cdk-nag para *serverless* y *AWS Solutions*.
 21. **CloudFormation.** CDK despliega todos los recursos a través de AWS CloudFormation.
 22. **Assets y configuración.** Los documentos de ejemplo para la base de conocimiento y otros assets se despliegan con el construct `BucketDeployment` de S3. Las 10 solicitudes de ejemplo, definidas en un archivo JSON, se precargan en DynamoDB con un *custom resource*; el frontend solo accede a las solicitudes a través del agente. Los valores de configuración de runtime se despliegan como parámetros de SSM Parameter Store.
-23. **Trazabilidad del despliegue.** El despliegue queda trazado en Amazon CloudWatch y AWS CloudTrail.
+23. **Trazabilidad del despliegue.** Las operaciones de CloudFormation quedan en el historial de eventos de AWS CloudTrail que la cuenta trae por defecto (90 días); la solución no crea un *trail* propio.
 
 ### Observabilidad y seguridad
 
@@ -68,7 +68,7 @@ Toda la solución se despliega en AWS (`us-east-1`). Los números corresponden a
 
 * Una cuenta de AWS con acceso en `us-east-1` a Amazon Nova 2 Lite en Amazon Bedrock, y la cuenta y región con *bootstrap* de CDK (`cdk bootstrap`).
 * Credenciales de AWS configuradas en la terminal (por ejemplo, `aws login` o un perfil SSO).
-* Python 3.13 o superior, [uv](https://docs.astral.sh/uv/), Node.js 22 o superior, [pnpm](https://pnpm.io/) y AWS CDK CLI (`npm install -g aws-cdk`).
+* Python 3.14 o superior, [uv](https://docs.astral.sh/uv/), Node.js 22 o superior, [pnpm](https://pnpm.io/) y AWS CDK CLI (`npm install -g aws-cdk`).
 * Docker con Buildx, en ejecución: CDK construye las imágenes ARM64 del runtime de agentes y de la tarea de evaluación.
 
 ### Configuración
@@ -102,7 +102,15 @@ cdk deploy --all
 
 `cdk deploy` compila el frontend con pnpm, construye las imágenes de los agentes y despliega los 8 stacks. Al terminar, la salida `SiteUrl` del stack `*-WebHosting` es la URL del frontend. Los documentos de ejemplo se sincronizan en la base de conocimiento automáticamente y las 10 solicitudes de ejemplo quedan precargadas.
 
-Para eliminar todo: `cdk destroy --all`. El registro de invocaciones de modelos de Bedrock es una configuración de la cuenta y región, y se desactiva al eliminar el stack de observabilidad.
+Todo usuario que se registra entra al grupo `users` de Cognito. Para ver los logs y lanzar evaluaciones, un usuario debe estar en el grupo `admins`, que se asigna a mano en la consola de Cognito (user pool del stack `*-Auth` → Grupos → `admins` → Agregar usuario) o con `aws cognito-idp admin-add-user-to-group`. El cambio aplica al volver a iniciar sesión (ADR-043).
+
+Para eliminar todo: `cdk destroy --all`. El registro de invocaciones de modelos de Bedrock (ADR-038) es una configuración de la cuenta y región y **sigue activo** después de eliminar los stacks, igual que su bucket de S3, su log group y su rol, que se retienen para conservar la auditoría. Volver a desplegar no falla por esos recursos retenidos: no tienen nombres fijos y el despliegue crea unos nuevos. Para desactivar el registro y limpiar la cuenta:
+
+```bash
+aws bedrock delete-model-invocation-logging-configuration --region us-east-1
+```
+
+Después se pueden borrar a mano el bucket, el log group y el rol retenidos (llevan las etiquetas de la aplicación).
 
 ### Desarrollo local
 
@@ -113,7 +121,7 @@ uv pip install -r requirements-dev.txt
 cd frontend && pnpm install && pnpm test && pnpm lint && pnpm build
 ```
 
-Para ejecutar el frontend contra un despliegue existente, crea `frontend/public/config.json` a partir de `config.json.example` con las salidas de los stacks y ejecuta `pnpm dev` (`http://localhost:5173`, ya registrado como URL de retorno en Cognito).
+Para ejecutar el frontend contra un despliegue existente, crea `frontend/public/config.json` a partir de `frontend/public/config.json.example` con las salidas de los stacks y ejecuta `pnpm dev` (`http://localhost:5173`, ya registrado como URL de retorno en Cognito).
 
 ### Estructura del repositorio
 
@@ -124,4 +132,3 @@ Para ejecutar el frontend contra un despliegue existente, crea `frontend/public/
 | `agents/` | Swarm de Strands para AgentCore Runtime (`swarm_agent/`) y evaluación agéntica (`evaluation/`). |
 | `frontend/` | Frontend en React con Cloudscape. |
 | `assets/` | Documentos de ejemplo de la base de conocimiento y solicitudes de ejemplo. |
-| `DISCREPANCIES.md` | Supuestos tomados durante la implementación, para revisar. |

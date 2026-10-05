@@ -9,10 +9,11 @@ import pytest
 from apitest import api_event, body_of, put_parameter
 from botocore.exceptions import ParamValidationError
 
-from api import get_log_events, list_evaluations, list_log_groups
+from api import get_evaluation, get_log_events, list_evaluations, list_log_groups, start_evaluation
 from common import evaluations, log_viewer
-from triggers import pre_signup
+from triggers import post_confirmation, pre_signup
 
+ADMINS = ["admins", "users"]
 ALLOWLIST = {"emails": ["Persona@Externa.com"], "domains": ["@empresa.com"]}
 
 
@@ -74,7 +75,7 @@ def test_log_groups_fallback_filters_by_app_tags(tagged_log_groups, monkeypatch,
 
     monkeypatch.setattr(client, "list_log_groups", old_sdk)
 
-    response = list_log_groups.handler(api_event("GET", "/logs/groups"), context)
+    response = list_log_groups.handler(api_event("GET", "/logs/groups", groups=ADMINS), context)
     assert [g["name"] for g in body_of(response)["logGroups"]] == ["/aws/lambda/app"]
 
 
@@ -87,7 +88,7 @@ def test_log_groups_use_tag_filter_when_available(tagged_log_groups, monkeypatch
 
     monkeypatch.setattr(log_viewer.logs_client(), "list_log_groups", list_log_groups_api)
 
-    response = list_log_groups.handler(api_event("GET", "/logs/groups"), context)
+    response = list_log_groups.handler(api_event("GET", "/logs/groups", groups=ADMINS), context)
 
     assert [g["name"] for g in body_of(response)["logGroups"]] == ["/aws/lambda/app"]
     assert calls[0]["logGroupTags"] == [{"key": "app", "values": ["rag"]}]
@@ -95,7 +96,7 @@ def test_log_groups_use_tag_filter_when_available(tagged_log_groups, monkeypatch
 
 def test_foreign_log_group_is_not_readable(tagged_log_groups, context):
     group_id = log_viewer.log_group_id("/aws/lambda/ajeno")
-    event = api_event("GET", f"/logs/groups/{group_id}/events", None, {"logGroupId": group_id})
+    event = api_event("GET", f"/logs/groups/{group_id}/events", None, {"logGroupId": group_id}, groups=ADMINS)
     event["resource"] = "/logs/groups/{logGroupId}/events"
     assert get_log_events.handler(event, context)["statusCode"] == 404
 
@@ -126,7 +127,7 @@ def test_list_evaluations_newest_first_without_results(monkeypatch, context):
     table.put_item(Item={"evaluationId": "a", "status": "COMPLETED", "createdAt": "2026-01-01", "results": ["x"]})
     table.put_item(Item={"evaluationId": "b", "status": "RUNNING", "createdAt": "2026-02-01"})
 
-    items = body_of(list_evaluations.handler(api_event("GET", "/evaluations"), context))["evaluations"]
+    items = body_of(list_evaluations.handler(api_event("GET", "/evaluations", groups=ADMINS), context))["evaluations"]
 
     assert [item["evaluationId"] for item in items] == ["b", "a"]
     assert all("results" not in item for item in items)
@@ -139,6 +140,7 @@ def test_app_log_group_events_are_returned_as_text(tagged_log_groups, context):
         None,
         {"logGroupId": log_viewer.log_group_id("/aws/lambda/app")},
         {"hours": "168", "limit": "2"},
+        groups=ADMINS,
     )
     event["resource"] = "/logs/groups/{logGroupId}/events"
 
@@ -157,3 +159,125 @@ def test_log_group_id_round_trips_and_is_path_safe():
     assert "/" not in group_id and "%" not in group_id and "=" not in group_id
     assert log_viewer.log_group_name(group_id) == name
     assert log_viewer.log_group_name("no*valido") is None
+
+
+@pytest.mark.parametrize("groups", [None, ["users"], ["administradores"]])
+@pytest.mark.parametrize(
+    ("module", "method", "path", "params"),
+    [
+        (list_log_groups, "GET", "/logs/groups", None),
+        (get_log_events, "GET", "/logs/groups/{logGroupId}/events", {"logGroupId": "L2F3cy9sYW1iZGEvYXBw"}),
+        (list_evaluations, "GET", "/evaluations", None),
+        (start_evaluation, "POST", "/evaluations", None),
+        (
+            get_evaluation,
+            "GET",
+            "/evaluations/{evaluationId}",
+            {"evaluationId": "0199a8a0-0000-7000-8000-000000000000"},
+        ),
+    ],
+)
+def test_logs_and_evaluations_are_admin_only(module, method, path, params, groups, context):
+    # ADR-043: sin el grupo de administradores la API responde 403, antes de tocar cualquier recurso.
+    event = api_event(method, path, None, params, groups=groups)
+    if params:
+        concrete = path
+        for key, value in params.items():
+            concrete = concrete.replace("{" + key + "}", value)
+        event["path"] = concrete
+    response = module.handler(event, context)
+    assert response["statusCode"] == 403
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("admins", {"admins"}),
+        ("admins,users", {"admins", "users"}),
+        ("[admins users]", {"admins", "users"}),
+        ("", set()),
+    ],
+)
+def test_group_claim_formats(raw, expected):
+    from types import SimpleNamespace
+
+    from common.auth import user_groups
+
+    claims = {"sub": "x", "cognito:groups": raw}
+    app = SimpleNamespace(
+        current_event=SimpleNamespace(request_context=SimpleNamespace(authorizer=SimpleNamespace(claims=claims)))
+    )
+    assert user_groups(app) == expected
+
+
+def test_post_confirmation_adds_new_users_to_the_users_group(monkeypatch, context):
+    from botocore.stub import Stubber
+
+    monkeypatch.setenv("DEFAULT_GROUP", "users")
+    event = {"triggerSource": "PostConfirmation_ConfirmSignUp", "userPoolId": "us-east-1_abc", "userName": "nueva"}
+    expected = {"UserPoolId": "us-east-1_abc", "Username": "nueva", "GroupName": "users"}
+
+    with Stubber(post_confirmation._cognito_client()) as stubber:
+        stubber.add_response("admin_add_user_to_group", {}, expected)
+        assert post_confirmation.handler(event, context) is event
+        stubber.assert_no_pending_responses()
+
+
+def test_post_confirmation_ignores_password_resets(monkeypatch, context):
+    monkeypatch.setenv("DEFAULT_GROUP", "users")
+    event = {"triggerSource": "PostConfirmation_ConfirmForgotPassword", "userPoolId": "x", "userName": "y"}
+    from botocore.stub import Stubber
+
+    # Un Stubber sin respuestas falla ante cualquier llamada a Cognito.
+    with Stubber(post_confirmation._cognito_client()):
+        assert post_confirmation.handler(event, context) is event
+
+
+@pytest.fixture
+def evaluation_backend(monkeypatch):
+    monkeypatch.setenv("EVALUATIONS_TABLE_NAME", "evaluaciones-test")
+    boto3.client("dynamodb").create_table(
+        TableName="evaluaciones-test",
+        KeySchema=[{"AttributeName": "evaluationId", "KeyType": "HASH"}],
+        AttributeDefinitions=[{"AttributeName": "evaluationId", "AttributeType": "S"}],
+        BillingMode="PAY_PER_REQUEST",
+    )
+    arn = boto3.client("stepfunctions").create_state_machine(
+        name="evaluacion",
+        definition=json.dumps({"StartAt": "Fin", "States": {"Fin": {"Type": "Succeed"}}}),
+        roleArn="arn:aws:iam::123456789012:role/sfn",
+    )["stateMachineArn"]
+    monkeypatch.setenv("EVALUATION_STATE_MACHINE_ARN", arn)
+    monkeypatch.setattr(start_evaluation, "_sfn", None)
+    return arn
+
+
+def _start(context):
+    return start_evaluation.handler(api_event("POST", "/evaluations", groups=ADMINS), context)
+
+
+def test_only_one_evaluation_runs_at_a_time(evaluation_backend, context):
+    first = _start(context)
+    assert first["statusCode"] == 202
+    # Un segundo clic, aunque pase el candado, ve la ejecución en curso.
+    evaluations.table().update_item(
+        Key={"evaluationId": evaluations.START_LOCK_ID},
+        UpdateExpression="SET expiresAt = :past",
+        ExpressionAttributeValues={":past": 0},
+    )
+    second = _start(context)
+    assert second["statusCode"] == 409
+    executions = boto3.client("stepfunctions").list_executions(stateMachineArn=evaluation_backend)["executions"]
+    assert len(executions) == 1
+
+
+def test_simultaneous_starts_are_blocked_by_the_lock(evaluation_backend, context):
+    evaluations.table().put_item(Item={"evaluationId": evaluations.START_LOCK_ID, "expiresAt": int(time.time()) + 60})
+    assert _start(context)["statusCode"] == 409
+    assert boto3.client("stepfunctions").list_executions(stateMachineArn=evaluation_backend)["executions"] == []
+
+
+def test_start_lock_is_not_listed_as_an_evaluation(evaluation_backend, context):
+    assert _start(context)["statusCode"] == 202
+    items = body_of(list_evaluations.handler(api_event("GET", "/evaluations", groups=ADMINS), context))["evaluations"]
+    assert len(items) == 1 and items[0]["evaluationId"] != evaluations.START_LOCK_ID

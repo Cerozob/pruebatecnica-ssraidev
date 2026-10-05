@@ -48,7 +48,7 @@ Cada decisión sigue el formato ADR: contexto, decisión, consecuencias y cumpli
 40. [ADR-040: Cloudscape como librería de componentes del frontend](#adr-040-cloudscape-como-librería-de-componentes-del-frontend)
 41. [ADR-041: Documentación de la API con OpenAPI desde API Gateway](#adr-041-documentación-de-la-api-con-openapi-desde-api-gateway)
 42. [ADR-042: Modelo de datos de las solicitudes](#adr-042-modelo-de-datos-de-las-solicitudes)
-
+43. [ADR-043: Grupos de Cognito para separar administradores y usuarios](#adr-043-grupos-de-cognito-para-separar-administradores-y-usuarios)
 ---
 
 ## ADR-001: AWS como plataforma
@@ -319,7 +319,9 @@ Al subir un documento, el usuario espera poder consultarlo de inmediato. Una sin
 
 ### Decisión
 
-Cada carga genera un evento `PutObject` que Amazon EventBridge enruta a un Lambda (paso 6). El Lambda lanza una sincronización incremental de la base de conocimiento (paso 7). Si ya hay una sincronización en curso, se omite. Como respaldo ante sincronizaciones fallidas u omitidas, el frontend ofrece un botón y un endpoint de sincronización manual.
+Cada carga genera un evento de S3 que Amazon EventBridge deja en una cola de Amazon SQS, y un Lambda procesa los eventos por lotes (paso 6). El Lambda lanza una sincronización incremental de la base de conocimiento (paso 7). El lanzamiento es idempotente: nunca hay dos sincronizaciones a la vez.
+
+Si hay una sincronización en curso que empezó después del cambio, esa sincronización ya lo incluye y el evento se descarta. Si empezó antes, puede no incluirlo: el lote falla y SQS lo reintenta cada 5 minutos, hasta 12 veces, hasta que se puede lanzar una sincronización nueva. Los eventos que agotan los reintentos van a una cola de mensajes fallidos. No hay sincronización manual: la cola con reintentos cubre las sincronizaciones que coinciden con otra en curso.
 
 ### Consecuencias
 
@@ -330,14 +332,15 @@ Cada carga genera un evento `PutObject` que Amazon EventBridge enruta a un Lambd
 
 #### Negativas
 
-* Un documento cargado mientras corre otra sincronización depende de que esa sincronización lo alcance o de la sincronización manual.
-* Una sincronización fallida no se reintenta automáticamente.
+* Un documento cargado mientras corre otra sincronización puede tardar unos minutos más en quedar disponible, hasta que esa sincronización termina y se lanza otra.
+* Una sincronización que se lanza pero termina con error no se reintenta automáticamente.
 
-Las mejoras propuestas (sincronización programada y cola de reintentos) están en [mejoras-futuras.md](mejoras-futuras.md).
+Las mejoras propuestas (sincronización programada y reintento de las sincronizaciones que terminan con error) están en [mejoras-futuras.md](mejoras-futuras.md).
 
 ### Cumplimiento
 
-* La sincronización se dispara por eventos de EventBridge sobre el bucket de documentos, con un endpoint manual como respaldo.
+* La sincronización se dispara por eventos de EventBridge sobre el bucket de documentos, a través de una cola de SQS con reintentos. No hay endpoint de sincronización manual.
+* Nunca se lanzan dos sincronizaciones a la vez, y un cambio ocurrido durante una sincronización se reintenta hasta quedar incluido.
 
 ---
 
@@ -500,7 +503,6 @@ Todos los agentes usan un LLM de Amazon Bedrock disponible en la cuenta (paso 11
 ### Decisión
 
 Por ahora, todos los agentes usan Amazon Nova 2 Lite, por razones de costo. Es un valor provisional y puede cambiar.
-
 El modelo se invoca con el perfil de inferencia que tenga mayor disponibilidad, en este orden: perfil global (`global.`), perfil geográfico (`us.`) y, si el modelo no tiene perfiles, el ID del modelo. Para Nova 2 Lite es `global.amazon.nova-2-lite-v1:0`. Los permisos de IAM solo permiten invocar el modelo base a través de ese perfil.
 
 ### Consecuencias
@@ -563,6 +565,8 @@ Las respuestas del agente pueden enviarse completas al terminar (síncronas) o e
 El endpoint de conversación responde de forma síncrona, por simplicidad.
 
 Si la respuesta tarda más que el tiempo máximo de integración de API Gateway (29 segundos), el cliente recibe un `504`, pero el Lambda termina el turno y lo guarda en el historial. El frontend consulta la conversación hasta que aparece la respuesta.
+
+La invocación del runtime no se reintenta: un reintento volvería a ejecutar el *swarm* completo, con el doble de costo y con las herramientas aplicadas dos veces.
 
 ### Consecuencias
 
@@ -669,7 +673,7 @@ El agente puede crear, consultar, listar y actualizar solicitudes, pero no elimi
 
 ### Contexto
 
-Las herramientas de solicitudes permiten asignar un nivel de prioridad y un nivel de esfuerzo estimado. Esa clasificación puede calcularse con reglas deterministas o dejarse al criterio del modelo.
+Las herramientas de solicitudes permiten asignar un nivel de prioridad y un nivel de esfuerzo estimado. Esa clasificación puede calcularse con reglas deterministas, dejarse al criterio del modelo o delegarse a un modelo de decisión especializado. Se evaluó Strands Decider, un modelo de decisión con confianza calibrada, y se descartó por costo y por restricciones de la cuenta: el modelo necesita unos 7 GiB de memoria y más de 2 GB de imagen, lo que excede el máximo de 3008 MB de Lambda en una cuenta nueva y el límite de 2 GB de AgentCore Runtime. Alojarlo en otro servicio añade costo fijo o infraestructura que no se justifica para este alcance.
 
 ### Decisión
 
@@ -680,11 +684,13 @@ El LLM juzga la prioridad y el esfuerzo de cada solicitud. Por simplicidad, las 
 #### Positivas
 
 * El modelo puede considerar el contenido completo de la solicitud, sin mantener reglas manuales.
+* No hay un modelo adicional que alojar, pagar ni mantener.
 * Los niveles fijos evitan valores arbitrarios y mantienen los datos consistentes.
 
 #### Negativas
 
 * La clasificación no es totalmente reproducible y depende del criterio del modelo.
+* No hay una confianza calibrada por estimación; el usuario puede corregir el nivel en cualquier momento.
 
 ### Cumplimiento
 
@@ -791,7 +797,12 @@ La prueba exige identificar y mitigar riesgos como el *prompt injection*. Puede 
 
 Se usa Amazon Bedrock Guardrails (paso 12), por ser un servicio administrado y por simplicidad. Solo se activa la detección y el bloqueo de ataques de *prompt injection*: es lo que exige la prueba, y agregar más filtros aumenta el costo.
 
-La aplicación del guardrail la gestiona Strands. Si se detecta un *prompt injection*, el agente no entrega una respuesta exitosa al ataque; en su lugar le informa al usuario que la solicitud fue bloqueada, con un mensaje como "Esta respuesta fue bloqueada por los guardrails".
+El guardrail se aplica en dos puntos de las conversaciones entre el usuario y los agentes:
+
+* **Entrada:** Strands envía el guardrail en cada invocación del modelo y está configurado para reemplazar la entrada y la salida por el mensaje de bloqueo cuando el guardrail interviene. De la entrada solo se evalúa el último mensaje del usuario.
+* **Salida:** el filtro de ataques de *prompt* de Bedrock solo evalúa contenido de entrada (su intensidad de salida debe ser `NONE`). Por eso, la respuesta final del swarm se envía a la API `ApplyGuardrail` como contenido de entrada, con el mismo guardrail. Así se detecta una instrucción inyectada desde la web o la base de conocimiento que llegue a la respuesta del modelo.
+
+Si se detecta un *prompt injection* en cualquiera de los dos puntos, el agente no entrega una respuesta exitosa al ataque; en su lugar le informa al usuario que la solicitud fue bloqueada, con un mensaje como "Esta respuesta fue bloqueada por los guardrails".
 
 ### Consecuencias
 
@@ -804,10 +815,13 @@ La aplicación del guardrail la gestiona Strands. Si se detecta un *prompt injec
 #### Negativas
 
 * No hay filtrado de PII, temas denegados ni verificación de *grounding* a nivel de guardrail.
+* La revisión de la salida es una llamada adicional a `ApplyGuardrail` por turno, que suma latencia y unidades de texto cobradas.
+* El filtro de ataques de *prompt* está pensado para mensajes de usuario. Sobre la respuesta del modelo detecta instrucciones inyectadas que se repiten en ella, pero no una inyección que solo cambie el comportamiento del agente sin dejar rastro en el texto.
 
 ### Cumplimiento
 
-* El guardrail de Bedrock está configurado solo con el filtro de ataques de *prompt* y se aplica a las invocaciones del modelo a través de Strands.
+* El guardrail de Bedrock está configurado solo con el filtro de ataques de *prompt* y se aplica a las invocaciones del modelo a través de Strands, con la redacción de entrada y de salida activadas.
+* La respuesta final de cada turno pasa por `ApplyGuardrail` con `source="INPUT"` antes de entregarse al usuario.
 * Cuando el guardrail interviene, la respuesta al usuario indica explícitamente que fue bloqueada por los guardrails.
 * Los turnos bloqueados se registran para auditoría, en el historial y en el contexto de la conversación: el mensaje del usuario y el mensaje de bloqueo (ver ADR-017).
 
@@ -955,6 +969,7 @@ La evaluación se orquesta con AWS Step Functions. Es un flujo determinista y bi
 ### Cumplimiento
 
 * Cada evaluación lanzada desde el frontend inicia una ejecución de Step Functions, que ejecuta la tarea de Fargate.
+* Solo puede haber una evaluación en curso: la API rechaza un nuevo inicio con `409` mientras otra ejecución sigue activa, y un candado de 60 segundos en DynamoDB evita que dos clics simultáneos lancen dos. Así no se pueden lanzar decenas de evaluaciones por error.
 
 ---
 
@@ -1120,6 +1135,8 @@ El frontend incluye un visor de logs básico, como un clon sencillo de CloudWatc
 
 El visor solo muestra los *log groups* que tienen las etiquetas de la aplicación. Para eso filtra con el parámetro `logGroupTags` de `list_log_groups` del cliente de CloudWatch Logs en boto3.
 
+El visor es solo para el grupo de administradores de Cognito (ver ADR-043), porque los logs incluyen las conversaciones de todos los usuarios.
+
 ### Consecuencias
 
 #### Positivas
@@ -1134,6 +1151,7 @@ El visor solo muestra los *log groups* que tienen las etiquetas de la aplicació
 
 * El visor de logs del frontend lee los *log groups* de CloudWatch a través de la API.
 * Todos los *log groups* de la solución llevan las etiquetas de la aplicación, y el visor solo lista los que las tienen.
+* Solo los administradores ven el visor en el frontend, y la API responde `403` a los demás usuarios.
 
 ---
 
@@ -1150,7 +1168,7 @@ El registro de invocaciones de modelos de Bedrock está activado en la cuenta de
 * **CloudWatch Logs**, con 3 meses de retención, para consultarlo desde la consola y desde el visor de logs.
 * **S3**, como copia durable, en un bucket que se conserva aunque se elimine la solución.
 
-El registro queda activo aunque se eliminen los stacks: la eliminación no borra la configuración, y el bucket, el log group y el rol de entrega se conservan.
+El registro queda activo aunque se eliminen los stacks: la eliminación no borra la configuración, y el bucket, el log group y el rol de entrega se conservan. Ninguno de esos recursos tiene un nombre fijo, para que un nuevo despliegue después de eliminar la solución cree recursos nuevos en lugar de fallar por un nombre ya usado.
 
 ### Consecuencias
 
@@ -1284,3 +1302,37 @@ Los valores por defecto permiten crear una solicitud solo con su descripción. L
 ### Cumplimiento
 
 * Las herramientas de solicitudes y el archivo JSON de solicitudes de ejemplo siguen este modelo, y las herramientas rechazan valores fuera de los permitidos.
+
+---
+
+## ADR-043: Grupos de Cognito para separar administradores y usuarios
+
+### Contexto
+
+El visor de logs muestra las conversaciones de todos los usuarios, y cada evaluación consume modelos y tiempo de Fargate. No todos los usuarios registrados deberían poder ver los logs ni lanzar evaluaciones.
+
+### Decisión
+
+Se usan dos grupos del user pool de Cognito:
+
+* `users`: usuarios normales. Pueden conversar con el asistente y subir sus propios documentos. Todo usuario nuevo entra a este grupo al confirmar su registro, mediante un Lambda *Post Confirmation*.
+* `admins`: administradores. Además de lo anterior, pueden leer los logs y lanzar y consultar evaluaciones. Este grupo se asigna a mano en la consola de Cognito, a propósito: ningún flujo de la aplicación convierte a un usuario en administrador.
+
+La API lee el claim `cognito:groups` del ID token y responde `403` en los endpoints de logs y de evaluaciones si el usuario no es administrador. El frontend oculta esas páginas a los usuarios normales.
+
+### Consecuencias
+
+#### Positivas
+
+* Los logs, que incluyen las conversaciones de todos, y las evaluaciones, que tienen costo, quedan restringidos.
+* Asignar un administrador es un paso manual y explícito, que no se puede hacer desde la aplicación.
+
+#### Negativas
+
+* Hay que asignar a mano el primer administrador después del despliegue.
+* Un cambio de grupo se refleja cuando el usuario obtiene un token nuevo (al volver a iniciar sesión o al renovar el token).
+
+### Cumplimiento
+
+* El user pool tiene los grupos `admins` y `users`, y el trigger *Post Confirmation* agrega a cada usuario nuevo a `users`.
+* Los endpoints de logs y de evaluaciones responden `403` a quien no está en `admins`, y el frontend solo muestra esas páginas a los administradores.

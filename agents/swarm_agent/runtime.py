@@ -54,7 +54,8 @@ def invoke(payload: dict, context: RequestContext) -> dict:
         result = run_turn(settings, tools, prompt, history, trace_attributes)
 
     # Todo turno se guarda, también los bloqueados, para auditoría. En un bloqueo, la respuesta guardada es el
-    # mensaje del guardrail: la salida original del modelo no existe porque el guardrail evalúa la entrada.
+    # mensaje del guardrail: si se bloqueó la entrada, el modelo no llegó a responder; si se bloqueó la
+    # respuesta, no se guarda para no reinyectarla en el contexto de la conversación.
     memory.append_turn(actor_id, session_id, prompt, result.answer)
     logger.info("Turno completado", extra={"agents": result.agents, "blocked": result.blocked})
     return {**result.to_dict(), "sessionId": session_id}

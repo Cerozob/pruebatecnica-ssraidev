@@ -207,3 +207,8 @@ def test_invoke_sends_only_the_message_and_session(monkeypatch):
             },
         )
         assert chat.invoke_swarm(None, "usuario-1", "nuevo")["sessionId"] == "asignado-por-agentcore-0123456789abcdef"
+
+
+def test_agentcore_invocation_is_never_retried():
+    # Un reintento volvería a ejecutar el swarm completo (doble costo y doble efecto en las herramientas).
+    assert chat._agentcore_client().meta.config.retries["total_max_attempts"] == 1

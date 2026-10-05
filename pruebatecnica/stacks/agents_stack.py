@@ -42,7 +42,7 @@ _TOOL_ACTIONS = {
     "create_request": ["dynamodb:PutItem"],
     "get_request": ["dynamodb:GetItem"],
     "list_requests": ["dynamodb:Scan"],
-    "update_request_summary": ["dynamodb:UpdateItem"],
+    "update_request_summary": ["dynamodb:GetItem", "dynamodb:UpdateItem"],
     "update_request_priority": ["dynamodb:UpdateItem"],
     "update_request_effort": ["dynamodb:UpdateItem"],
     "update_request_status": ["dynamodb:UpdateItem"],

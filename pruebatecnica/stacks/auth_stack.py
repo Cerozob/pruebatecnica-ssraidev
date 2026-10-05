@@ -4,6 +4,7 @@ import json
 
 from aws_cdk import CfnOutput, Duration, RemovalPolicy, SecretValue, Stack
 from aws_cdk import aws_cognito as cognito
+from aws_cdk import aws_iam as iam
 from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
@@ -13,6 +14,10 @@ from pruebatecnica.constructs.nag import acknowledge
 from pruebatecnica.constructs.python_function import PythonFunction
 
 LOCAL_DEV_URL = "http://localhost:5173"
+
+# ADR-043: grupos de Cognito. Todo registro nuevo entra a USERS_GROUP; ADMINS_GROUP se asigna a mano.
+ADMINS_GROUP = "admins"
+USERS_GROUP = "users"
 
 
 class AuthStack(Stack):
@@ -49,6 +54,19 @@ class AuthStack(Stack):
         )
         allowlist.grant_read(pre_signup.function)
 
+        post_confirmation = PythonFunction(
+            self,
+            "PostConfirmation",
+            code=backend_code(),
+            handler="triggers.post_confirmation.handler",
+            service_name="post-confirmation",
+            description="Agrega cada usuario nuevo al grupo de usuarios normales (ADR-043)",
+            log_retention_days=config.log_retention_days,
+            environment={"DEFAULT_GROUP": USERS_GROUP},
+            timeout=Duration.seconds(10),
+            memory_size=256,
+        )
+
         self.user_pool = cognito.UserPool(
             self,
             "UserPool",
@@ -69,7 +87,9 @@ class AuthStack(Stack):
             mfa=cognito.Mfa.OPTIONAL,
             mfa_second_factor=cognito.MfaSecondFactor(sms=False, otp=True),
             account_recovery=cognito.AccountRecovery.EMAIL_ONLY,
-            lambda_triggers=cognito.UserPoolTriggers(pre_sign_up=pre_signup.function),
+            lambda_triggers=cognito.UserPoolTriggers(
+                pre_sign_up=pre_signup.function, post_confirmation=post_confirmation.function
+            ),
             removal_policy=RemovalPolicy.DESTROY,
         )
         acknowledge(
@@ -86,6 +106,34 @@ class AuthStack(Stack):
             "AwsSolutions-COG8",
             "El plan Plus de Cognito tiene costo por usuario; el plan Essentials cubre el managed login (ADR-039).",
         )
+
+        cognito.CfnUserPoolGroup(
+            self,
+            "AdminsGroup",
+            user_pool_id=self.user_pool.user_pool_id,
+            group_name=ADMINS_GROUP,
+            description="Administradores: visor de logs y evaluaciones. Se asigna a mano en la consola.",
+            precedence=0,
+        )
+        cognito.CfnUserPoolGroup(
+            self,
+            "UsersGroup",
+            user_pool_id=self.user_pool.user_pool_id,
+            group_name=USERS_GROUP,
+            description="Usuarios normales: conversaciones y carga de documentos. Grupo por defecto.",
+            precedence=10,
+        )
+        # Política aparte, adjunta al rol después de crear el pool: dentro del rol de la función crearía un
+        # ciclo (el pool depende de la función y el permiso, del ARN del pool).
+        iam.Policy(
+            self,
+            "PostConfirmationGroupPolicy",
+            statements=[
+                iam.PolicyStatement(
+                    actions=["cognito-idp:AdminAddUserToGroup"], resources=[self.user_pool.user_pool_arn]
+                )
+            ],
+        ).attach_to_role(post_confirmation.function.role)
 
         self.domain = self.user_pool.add_domain(
             "ManagedLoginDomain",

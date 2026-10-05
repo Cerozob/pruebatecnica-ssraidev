@@ -4,10 +4,13 @@ Riesgos de llevar la solución a producción tal como está. Cada riesgo pendien
 
 ## Riesgos mitigados en la solución
 
-* ***Prompt injection*:** Bedrock Guardrails bloquea los ataques y el usuario recibe un mensaje de bloqueo ([ADR-026](decisiones_full.md#adr-026-bedrock-guardrails-solo-para-detectar-prompt-injection)).
+* ***Prompt injection*:** Bedrock Guardrails bloquea los ataques en el mensaje del usuario y en la respuesta del modelo, y el usuario recibe un mensaje de bloqueo ([ADR-026](decisiones_full.md#adr-026-bedrock-guardrails-solo-para-detectar-prompt-injection)).
 * **Respuestas no fundamentadas:** las respuestas citan sus fuentes y el agente responde "no tengo esa información" cuando no hay contexto relevante ([ADR-029](decisiones_full.md#adr-029-respuestas-fundamentadas-con-referencias-obligatorias-y-conversaciones-privadas-por-usuario)). La evaluación agéntica lo verifica ([ADR-030](decisiones_full.md#adr-030-evaluación-agéntica-con-strands-evals-y-agentcore-evaluations)).
 * **Acciones destructivas del agente:** no existe la operación de eliminar solicitudes ([ADR-021](decisiones_full.md#adr-021-sin-operación-de-eliminación-de-solicitudes)).
 * **Registro de usuarios no autorizados:** solo se pueden registrar correos y dominios permitidos ([ADR-007](decisiones_full.md#adr-007-registro-restringido-con-un-lambda-pre-signup)).
+* **Acceso indebido a logs y evaluaciones:** solo el grupo de administradores de Cognito, asignado a mano, puede leer los logs y lanzar evaluaciones ([ADR-043](decisiones_full.md#adr-043-grupos-de-cognito-para-separar-administradores-y-usuarios)).
+* **Evaluaciones lanzadas en masa por error:** solo puede haber una evaluación en curso ([ADR-031](decisiones_full.md#adr-031-step-functions-para-orquestar-la-evaluación)).
+* **Documentos perdidos durante una sincronización:** los cambios ocurridos durante una sincronización se reintentan hasta quedar incluidos ([ADR-010](decisiones_full.md#adr-010-sincronización-de-la-base-de-conocimiento-por-eventos)).
 * **Exposición de secretos:** los valores sensibles están en Secrets Manager ([ADR-027](decisiones_full.md#adr-027-secrets-manager-para-los-correos-y-dominios-permitidos)).
 
 ## Riesgos pendientes
@@ -19,7 +22,7 @@ Riesgos de llevar la solución a producción tal como está. Cada riesgo pendien
 ### Ingesta documental
 
 * **Cargas grandes interrumpidas:** sin carga multiparte, una carga fallida de un documento grande se debe repetir completa. Mitigación: [carga multiparte](mejoras-futuras.md#ingesta-documental).
-* **Documentos no disponibles:** si una sincronización falla, no se reintenta y los documentos no quedan disponibles para el agente. Mitigación: [sincronización programada y cola de reintentos](mejoras-futuras.md#ingesta-documental).
+* **Documentos no disponibles:** si una sincronización lanzada termina con error, no se reintenta y los documentos no quedan disponibles para el agente. Mitigación: [sincronización programada y reintento de las sincronizaciones fallidas](mejoras-futuras.md#ingesta-documental).
 
 ### Conversación
 
@@ -29,6 +32,7 @@ Riesgos de llevar la solución a producción tal como está. Cada riesgo pendien
 
 * **Respuestas de menor calidad:** Amazon Nova 2 Lite se eligió por costo y puede razonar, usar herramientas y coordinar el *swarm* peor que un modelo más grande. Mitigación: [un modelo de mayor calidad](mejoras-futuras.md#modelo).
 * **Sesgo de autoevaluación:** el juez de la evaluación es el mismo modelo que los agentes, así que puede calificar de más sus respuestas. Mitigación: [un juez de otra familia de modelos](mejoras-futuras.md#modelo).
+* **Prioridad y esfuerzo no reproducibles:** los decide el LLM y la misma solicitud puede recibir niveles distintos, sin una confianza asociada. Mitigación: [un modelo de decisión especializado](mejoras-futuras.md#modelo).
 
 ### Seguridad
 

@@ -43,7 +43,7 @@ class AgentSettings:
     requests_target_prefix: str
 
     @classmethod
-    def load(cls) -> "AgentSettings":
+    def load(cls) -> AgentSettings:
         return cls(
             model_id=param("MODEL_ID_PARAM"),
             guardrail_id=param("GUARDRAIL_ID_PARAM"),

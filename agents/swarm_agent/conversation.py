@@ -73,7 +73,7 @@ def _parse_tool_result(content: list[dict]) -> list[Any]:
         elif "text" in block:
             try:
                 parsed.append(json.loads(block["text"]))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
     return parsed
 

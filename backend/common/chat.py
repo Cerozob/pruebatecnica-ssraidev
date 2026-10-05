@@ -23,9 +23,10 @@ _agentcore = None
 def _agentcore_client():
     global _agentcore
     if _agentcore is None:
+        # Sin reintentos: un reintento ejecutaría el swarm dos veces, con el doble de costo.
         _agentcore = boto3.client(
             "bedrock-agentcore",
-            config=Config(read_timeout=280, connect_timeout=10, retries={"max_attempts": 1}),
+            config=Config(read_timeout=280, connect_timeout=10, retries={"total_max_attempts": 1}),
         )
     return _agentcore
 

@@ -1,4 +1,3 @@
-import Box from "@cloudscape-design/components/box";
 import Button from "@cloudscape-design/components/button";
 import Container from "@cloudscape-design/components/container";
 import ContentLayout from "@cloudscape-design/components/content-layout";
@@ -19,7 +18,6 @@ export default function DocumentsPage() {
   const api = useApi();
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [flash, setFlash] = useState<FlashbarProps.MessageDefinition[]>([]);
 
   const notify = (type: FlashbarProps.Type, content: string) => {
@@ -45,18 +43,6 @@ export default function DocumentsPage() {
     }
     setFiles([]);
     setUploading(false);
-  };
-
-  const sync = async () => {
-    setSyncing(true);
-    try {
-      const result = await api.syncKnowledgeBase();
-      notify(result.started ? "success" : "info", result.message);
-    } catch (error) {
-      notify("error", `No se pudo sincronizar: ${(error as Error).message}`);
-    } finally {
-      setSyncing(false);
-    }
   };
 
   return (
@@ -100,23 +86,6 @@ export default function DocumentsPage() {
               disabled={files.length === 0 || tooLarge.length > 0}
             >
               Subir
-            </Button>
-          </SpaceBetween>
-        </Container>
-        <Container
-          header={
-            <Header
-              variant="h2"
-              description="Úsala si una sincronización automática falló o se omitió porque había otra en curso."
-            >
-              Sincronización manual
-            </Header>
-          }
-        >
-          <SpaceBetween size="s">
-            <Box>Lanza una sincronización incremental de la base de conocimiento con el bucket de documentos.</Box>
-            <Button onClick={() => void sync()} loading={syncing} iconName="refresh">
-              Sincronizar base de conocimiento
             </Button>
           </SpaceBetween>
         </Container>

@@ -1,5 +1,8 @@
 """Carga con URL prefirmada (ADR-009) y sincronización sin solapamientos (ADR-010)."""
 
+import json
+from datetime import UTC, datetime
+
 import boto3
 import pytest
 from apitest import api_event, body_of, put_parameter
@@ -7,6 +10,7 @@ from botocore.stub import Stubber
 
 from api import create_upload_url
 from common import knowledge
+from triggers import kb_sync_on_upload
 
 BUCKET = "documentos-test"
 
@@ -119,3 +123,59 @@ def test_sync_starts_when_idle(bedrock_agent):
     result = knowledge.start_sync_if_idle("KB1", "DS1")
 
     assert result.started is True and result.ingestionJobId == "JOB2"
+
+
+def test_csv_uploads_keep_their_extension():
+    assert create_upload_url.safe_file_name("matches.CSV") == "matches.csv"
+
+
+def _running_job(stubber, started_at):
+    _no_jobs(stubber, "STARTING")
+    stubber.add_response(
+        "list_ingestion_jobs",
+        {
+            "ingestionJobSummaries": [
+                {
+                    "ingestionJobId": "JOB1",
+                    "knowledgeBaseId": "KB1",
+                    "dataSourceId": "DS1",
+                    "status": "IN_PROGRESS",
+                    "startedAt": started_at,
+                    "updatedAt": started_at,
+                }
+            ]
+        },
+    )
+
+
+def _sqs_event(*times):
+    return {"Records": [{"body": json.dumps({"time": time, "detail": {}})} for time in times]}
+
+
+@pytest.fixture
+def sync_params(monkeypatch):
+    monkeypatch.setenv("KNOWLEDGE_BASE_ID_PARAM", "/test/kb-id")
+    monkeypatch.setenv("DATA_SOURCE_ID_PARAM", "/test/ds-id")
+    put_parameter("/test/kb-id", "KB1")
+    put_parameter("/test/ds-id", "DS1")
+
+
+def test_upload_during_an_older_sync_is_retried(bedrock_agent, sync_params, context):
+    # La sincronización en curso empezó antes de la carga: puede no incluir el archivo, así que el lote se reintenta.
+    _running_job(bedrock_agent, datetime(2026, 10, 5, 10, 0, tzinfo=UTC))
+    with pytest.raises(knowledge.SyncPendingError):
+        kb_sync_on_upload.handler(_sqs_event("2026-10-05T09:59:00Z", "2026-10-05T10:01:00Z"), context)
+
+
+def test_upload_covered_by_a_newer_sync_is_skipped(bedrock_agent, sync_params, context):
+    _running_job(bedrock_agent, datetime(2026, 10, 5, 10, 5, tzinfo=UTC))
+    result = kb_sync_on_upload.handler(_sqs_event("2026-10-05T10:01:00Z"), context)
+    assert result["started"] is False and result["ingestionJobId"] == "JOB1"
+
+
+def test_concurrent_start_is_retried(bedrock_agent, sync_params, context):
+    for status in ("STARTING", "IN_PROGRESS", "STOPPING"):
+        _no_jobs(bedrock_agent, status)
+    bedrock_agent.add_client_error("start_ingestion_job", service_error_code="ConflictException", http_status_code=409)
+    with pytest.raises(knowledge.SyncPendingError):
+        kb_sync_on_upload.handler(_sqs_event("2026-10-05T10:01:00Z"), context)

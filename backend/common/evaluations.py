@@ -27,6 +27,10 @@ def plain(value):
     return value
 
 
+# Elemento que evita dos inicios simultáneos (ver api/start_evaluation.py); no es una evaluación.
+START_LOCK_ID = "candado-inicio"
+LOCK_SECONDS = 60
+
 SUMMARY_FIELDS = ("evaluationId", "status", "createdAt", "startedAt", "finishedAt", "progress", "summary", "error")
 
 

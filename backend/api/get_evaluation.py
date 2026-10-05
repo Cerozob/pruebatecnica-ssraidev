@@ -9,6 +9,7 @@ from aws_lambda_powertools.event_handler.openapi.params import Path
 from aws_lambda_powertools.logging import correlation_paths
 
 from common import evaluations
+from common.auth import require_admin
 from common.http import build_resolver
 
 logger = Logger()
@@ -17,6 +18,7 @@ app = build_resolver()
 
 @app.get("/evaluations/<evaluationId>")
 def get_evaluation(evaluationId: Annotated[UUID, Path()]) -> dict:
+    require_admin(app)
     item = evaluations.table().get_item(Key={"evaluationId": str(evaluationId)}).get("Item")
     if item is None:
         raise NotFoundError("La evaluación no existe.")

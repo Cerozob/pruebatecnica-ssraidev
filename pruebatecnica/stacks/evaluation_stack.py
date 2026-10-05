@@ -190,7 +190,9 @@ class EvaluationStack(Stack):
         )
         self.judge_model_id_param.grant_read(task_role)
         self.groundedness_evaluator_param.grant_read(task_role)
-        for statement in model_invoke_statements(self, self._config.judge_model_id, ["bedrock:InvokeModel"]):
+        for statement in model_invoke_statements(
+            self, self._config.judge_model_id, ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+        ):
             task_role.add_to_principal_policy(statement)
         task_role.add_to_principal_policy(
             iam.PolicyStatement(

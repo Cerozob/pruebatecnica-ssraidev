@@ -9,6 +9,7 @@ import Spinner from "@cloudscape-design/components/spinner";
 import TopNavigation from "@cloudscape-design/components/top-navigation";
 import { useAuth } from "react-oidc-context";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
+import { isAdmin } from "./auth";
 import type { RuntimeConfig } from "./config";
 import ChatPage from "./pages/ChatPage";
 import DocumentsPage from "./pages/DocumentsPage";
@@ -19,9 +20,14 @@ import LogsPage from "./pages/LogsPage";
 const NAV_ITEMS = [
   { type: "link" as const, text: "Conversación", href: "/chat" },
   { type: "link" as const, text: "Documentos", href: "/documentos" },
+];
+
+// ADR-043: solo el grupo de administradores de Cognito ve las evaluaciones y los logs. La API también lo exige.
+const ADMIN_NAV_ITEMS = [
   { type: "link" as const, text: "Evaluaciones", href: "/evaluaciones" },
   { type: "link" as const, text: "Logs", href: "/logs" },
 ];
+
 
 function SignIn({ onSignIn, error }: { onSignIn: () => void; error?: string }) {
   return (
@@ -55,6 +61,8 @@ export default function App({ config }: { config: RuntimeConfig }) {
     return <SignIn onSignIn={() => void auth.signinRedirect()} error={auth.error?.message} />;
   }
 
+  const admin = isAdmin(auth.user?.profile);
+
   const signOut = async () => {
     await auth.removeUser();
     // Cognito cierra su propia sesión en el endpoint /logout del managed login.
@@ -87,7 +95,7 @@ export default function App({ config }: { config: RuntimeConfig }) {
           <SideNavigation
             activeHref={`/${location.pathname.split("/")[1]}`}
             header={{ href: "/chat", text: "Menú" }}
-            items={NAV_ITEMS}
+            items={admin ? [...NAV_ITEMS, ...ADMIN_NAV_ITEMS] : NAV_ITEMS}
             onFollow={(event) => {
               event.preventDefault();
               navigate(event.detail.href);
@@ -100,9 +108,13 @@ export default function App({ config }: { config: RuntimeConfig }) {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:conversationId" element={<ChatPage />} />
             <Route path="/documentos" element={<DocumentsPage />} />
-            <Route path="/evaluaciones" element={<EvaluationsPage />} />
-            <Route path="/evaluaciones/:evaluationId" element={<EvaluationDetailPage />} />
-            <Route path="/logs" element={<LogsPage />} />
+            {admin && (
+              <>
+                <Route path="/evaluaciones" element={<EvaluationsPage />} />
+                <Route path="/evaluaciones/:evaluationId" element={<EvaluationDetailPage />} />
+                <Route path="/logs" element={<LogsPage />} />
+              </>
+            )}
             <Route path="*" element={<Navigate to="/chat" replace />} />
           </Routes>
         }
