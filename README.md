@@ -1,5 +1,8 @@
 # Asistente RAG Agéntico Empresarial
 
+* Informe de entrega (PDF): [docs/entrega/entrega.pdf](docs/entrega.pdf)
+* Video de la solución: [https://www.youtube.com/watch?v=hxTizFkDFQI](https://www.youtube.com/watch?v=hxTizFkDFQI)
+
 Solución a la prueba técnica. Agente RAG empresarial sobre AWS.
 
 * Decisiones técnicas (resumen): [docs/decisiones_short.md](docs/decisiones_short.md)

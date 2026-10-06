@@ -1,6 +1,6 @@
 # Riesgos y Consideraciones para Producción
 
-Riesgos de llevar la solución a producción tal como está. Cada riesgo pendiente es la contraparte de una [mejora futura](mejoras-futuras.md), que sería su mitigación. Las mejoras de [nuevos canales](mejoras-futuras.md#nuevos-canales) amplían la solución y no responden a un riesgo.
+Esta sección contiene los riesgos al ir a producción, la mayoría son básicamente los *tradeoffs* de la sección anterior de [mejoras futuras](mejoras-futuras.md) a excepción de los canales de Amazon Connect. Además, se incluye un resumen de algunas consideraciones que se mitigaron porque incluso a un prototipo de esta escala vale la pena revisar y evitar.
 
 ## Riesgos mitigados en la solución
 
@@ -21,18 +21,19 @@ Riesgos de llevar la solución a producción tal como está. Cada riesgo pendien
 
 ### Ingesta documental
 
-* **Cargas grandes interrumpidas:** sin carga multiparte, una carga fallida de un documento grande se debe repetir completa. Mitigación: [carga multiparte](mejoras-futuras.md#ingesta-documental).
-* **Documentos no disponibles:** si una sincronización lanzada termina con error, no se reintenta y los documentos no quedan disponibles para el agente. Mitigación: [sincronización programada y reintento de las sincronizaciones fallidas](mejoras-futuras.md#ingesta-documental).
+* **Documentos de más de 50 MB:** la base de conocimiento no admite archivos de más de 50 MB, así que un documento más grande se debe dividir a mano antes de cargarlo. Mitigación: dividir automáticamente los documentos grandes antes de la ingesta.
+* **Formatos no soportados:** los formatos que la base de conocimiento no procesa, como video o audio, requieren un procesamiento manual antes de cargarlos. Mitigación: Amazon Bedrock Data Automation para extraer su contenido.
 
 ### Conversación
 
 * **Latencia percibida:** con respuestas síncronas, el usuario no ve nada hasta que la respuesta está completa. Mitigación: [respuestas en *streaming*](mejoras-futuras.md#conversación).
+* **Límite de 29 s de API Gateway:** las API REST de API Gateway cortan la respuesta a los 29 s, un límite fijo. En los flujos en los que las acciones del agente o su razonamiento superan ese tiempo, el usuario no recibe la respuesta en la misma petición, aunque el turno se guarda. Mitigación: invocar AgentCore Runtime directamente desde el frontend con el SDK de AWS, lo que es necesario para esos flujos.
 
 ### Modelo
 
 * **Respuestas de menor calidad:** Amazon Nova 2 Lite se eligió por costo y puede razonar, usar herramientas y coordinar el *swarm* peor que un modelo más grande. Mitigación: [un modelo de mayor calidad](mejoras-futuras.md#modelo).
 * **Sesgo de autoevaluación:** el juez de la evaluación es el mismo modelo que los agentes, así que puede calificar de más sus respuestas. Mitigación: [un juez de otra familia de modelos](mejoras-futuras.md#modelo).
-* **Prioridad y esfuerzo no reproducibles:** los decide el LLM y la misma solicitud puede recibir niveles distintos, sin una confianza asociada. Mitigación: [un modelo de decisión especializado](mejoras-futuras.md#modelo).
+* **Prioridad y esfuerzo no reproducibles:** los decide el LLM y la misma solicitud puede recibir niveles distintos, sin una confianza asociada. Mitigación: [un modelo de decisión especializado](mejoras-futuras.md#modelo), por ejemplo uno que clasifique "el portal de pagos no carga para ningún cliente" como prioridad alta y esfuerzo medio, con una confianza asociada. No se usó un modelo como Strands Decider por razones de costo, pero sería un caso de uso perfecto para él.
 
 ### Seguridad
 
@@ -60,3 +61,9 @@ Riesgos de llevar la solución a producción tal como está. Cada riesgo pendien
 * **Fallos detectados tarde:** sin métricas, alarmas ni *dashboards*, los problemas se descubren revisando los logs a mano. Mitigación: [*dashboards*, métricas y alarmas](mejoras-futuras.md#observabilidad).
 * **Depuración difícil entre componentes:** sin X-Ray ni Application Signals, seguir una petición a través de API Gateway, Lambda, AgentCore y Bedrock es costoso. Mitigación: [trazabilidad completa y X-Ray](mejoras-futuras.md#observabilidad).
 * **Procesos asíncronos opacos:** el usuario no ve en el frontend el estado de las sincronizaciones de la base de conocimiento ni de las evaluaciones. Mitigación: [monitoreo de procesos asíncronos en el frontend](mejoras-futuras.md#observabilidad).
+
+## Otras consideraciones
+
+* **Una sola ejecución de la evaluación:** los resultados de la evaluación incluidos en la entrega corresponden a una sola ejecución. El modelo no es determinista, así que otra ejecución puede dar resultados distintos.
+* **Intensidad del guardrail:** el guardrail usa intensidad `LOW` porque con intensidades mayores bloqueaba el contexto propio del *swarm* y conversaciones válidas ([ADR-026](decisiones_full.md#adr-026-bedrock-guardrails-solo-para-detectar-prompt-injection)). Con esa intensidad, la evaluación de la entrega bloqueó 1 de 4 ataques de *prompt injection*.
+* **Elementos fuera del diagrama:** AgentCore Memory y los grupos de Cognito no se dibujan a propósito; se describen en la arquitectura y en las decisiones técnicas.
