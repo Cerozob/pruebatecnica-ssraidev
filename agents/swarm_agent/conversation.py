@@ -5,10 +5,19 @@ No importan Strands para poder probarlas sin dependencias pesadas.
 
 import json
 from collections.abc import Iterable
+from datetime import date
 from pathlib import PurePosixPath
 from typing import Any
 
 TOOL_SEPARATOR = "___"
+
+
+def with_current_date(prompt: str, today: date) -> str:
+    """Agrega la fecha actual al prompt de sistema.
+
+    Sin ella, el modelo trata como futuros los hechos posteriores a su entrenamiento (por ejemplo, el Mundial 2026).
+    """
+    return f"{prompt.rstrip()}\n\nFecha actual: {today.isoformat()}.\n"
 
 
 def normalize_history(history: Iterable[dict]) -> list[dict]:

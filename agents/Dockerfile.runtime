@@ -1,11 +1,17 @@
 # Swarm de agentes para Amazon Bedrock AgentCore Runtime (ARM64).
 FROM public.ecr.aws/docker/library/python:3.14-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH=/opt/venv/bin:${PATH}
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Las dependencias se instalan en un venv con uv, mucho más rápido que pip. El venv va primero en PATH,
+# así que opentelemetry-instrument y python salen de él.
+RUN pip install --no-cache-dir uv \
+    && uv venv /opt/venv \
+    && uv pip install --no-cache -r requirements.txt
 
 COPY swarm_agent ./swarm_agent
 

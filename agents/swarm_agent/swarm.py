@@ -2,6 +2,7 @@
 
 import logging
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
@@ -10,7 +11,7 @@ from strands.models import BedrockModel
 from strands.multiagent import Swarm
 from strands.tools.mcp import MCPClient
 
-from swarm_agent.conversation import extract_sources, normalize_history, partition_tools
+from swarm_agent.conversation import extract_sources, normalize_history, partition_tools, with_current_date
 from swarm_agent.settings import AgentSettings
 
 logger = logging.getLogger(__name__)
@@ -61,8 +62,8 @@ def list_all_tools(mcp: MCPClient) -> list:
 
 def _model(settings: AgentSettings) -> BedrockModel:
     # ADR-026: Strands aplica el guardrail en cada invocación del modelo y evalúa solo el último mensaje. Ese mensaje
-    # incluye el contexto de coordinación que agrega el swarm, que con intensidad HIGH el filtro de ataques de prompt
-    # marca con confianza baja; por eso el guardrail usa intensidad MEDIUM. Si interviene, la entrada y la salida se
+    # incluye el contexto de coordinación que agrega el swarm, que el filtro de ataques de prompt marca con
+    # confianza baja o media; por eso el guardrail usa intensidad LOW. Si interviene, la entrada y la salida se
     # reemplazan por el mensaje de bloqueo.
     return BedrockModel(
         model_id=settings.model_id,
@@ -95,7 +96,7 @@ def build_agents(
         return Agent(
             name=name,
             description=description,
-            system_prompt=load_prompt(prompt),
+            system_prompt=with_current_date(load_prompt(prompt), datetime.now(UTC).date()),
             model=_model(settings),
             tools=agent_tools,
             # Cada agente recibe el historial, porque el swarm le pasa solo la tarea y el mensaje de traspaso.

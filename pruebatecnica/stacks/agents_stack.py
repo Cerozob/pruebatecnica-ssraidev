@@ -194,10 +194,10 @@ class AgentsStack(Stack):
             blocked_outputs_messaging=BLOCKED_MESSAGE,
             content_policy_config=bedrock.CfnGuardrail.ContentPolicyConfigProperty(
                 filters_config=[
-                    # Los ataques de prompt solo se evalúan en la entrada; la salida debe ser NONE. Con HIGH, el
-                    # contexto de coordinación que el swarm agrega al mensaje se bloquea con confianza baja.
+                    # Los ataques de prompt solo se evalúan en la entrada; la salida debe ser NONE. Con HIGH o MEDIUM,
+                    # el contexto de coordinación que el swarm agrega al mensaje se bloquea (ADR-026).
                     bedrock.CfnGuardrail.ContentFilterConfigProperty(
-                        type="PROMPT_ATTACK", input_strength="MEDIUM", output_strength="NONE"
+                        type="PROMPT_ATTACK", input_strength="LOW", output_strength="NONE"
                     )
                 ]
             ),
@@ -207,7 +207,7 @@ class AgentsStack(Stack):
             "PromptAttackGuardrailVersion",
             guardrail_identifier=guardrail.attr_guardrail_id,
             # Cambiar la descripción reemplaza la versión; así un cambio en el guardrail publica una nueva.
-            description="Versión publicada para los agentes (ataques de prompt con intensidad MEDIUM)",
+            description="Versión publicada para los agentes (ataques de prompt con intensidad LOW)",
         )
         return guardrail, version
 
@@ -338,7 +338,7 @@ class AgentsStack(Stack):
                                 ),
                                 parameter_values={
                                     "knowledgeBaseId": knowledge_base.attr_knowledge_base_id,
-                                    "retrievalConfiguration": {"managedSearchConfiguration": {"numberOfResults": 5}},
+                                    "retrievalConfiguration": {"managedSearchConfiguration": {"numberOfResults": 10}},
                                 },
                                 parameter_overrides=[
                                     agentcore.CfnGatewayTarget.ConnectorParameterOverrideProperty(

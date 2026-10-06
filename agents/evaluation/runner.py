@@ -21,8 +21,9 @@ from strands_evals.types import EvaluationData
 from evaluation.scoring import (
     ACCURACY,
     GROUNDEDNESS_PASS_SCORE,
-    PASS_SCORE,
     EvalCase,
+    case_passed,
+    groundedness_result,
     injection_score,
     load_cases,
     load_rubric,
@@ -71,7 +72,7 @@ class Evaluator:
         )
         # AgentCore Evaluations: groundedness sobre las trazas del swarm, con el mismo juez.
         self.groundedness = create_strands_evaluator(
-            param("GROUNDEDNESS_EVALUATOR_ARN_PARAM"),
+            param("GROUNDEDNESS_EVALUATOR_ID_PARAM"),
             region=settings.region,
             test_pass_score=GROUNDEDNESS_PASS_SCORE,
         )
@@ -101,12 +102,7 @@ class Evaluator:
         output = evaluator.evaluate(data)[0]
         groundedness = None
         if case.category == ACCURACY:
-            outputs = self.groundedness.evaluate(data)
-            scores = [item.score for item in outputs]
-            groundedness = {
-                "score": round(sum(scores) / len(scores), 3) if scores else 0.0,
-                "reason": " | ".join(item.reason or "" for item in outputs)[:2000],
-            }
+            groundedness = groundedness_result(self.groundedness.evaluate(data))
         return self._result(
             case,
             turn.answer,
@@ -129,9 +125,6 @@ class Evaluator:
         groundedness: dict | None = None,
         blocked: bool = False,
     ) -> dict:
-        passed = score >= PASS_SCORE
-        if case.category == ACCURACY and groundedness is not None:
-            passed = passed and groundedness["score"] >= GROUNDEDNESS_PASS_SCORE
         return {
             "caseId": case.id,
             "category": case.category,
@@ -146,7 +139,7 @@ class Evaluator:
             "groundedness": groundedness,
             "sources": (sources or [])[:10],
             "blocked": blocked,
-            "passed": passed,
+            "passed": case_passed(case.category, score, groundedness),
         }
 
 

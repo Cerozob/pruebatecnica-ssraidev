@@ -81,7 +81,8 @@ export interface EvaluationResult {
   answer: string;
   score: number;
   reason: string;
-  groundedness?: { score: number; reason: string } | null;
+  // score es null cuando AgentCore no pudo calificar (error de la API); reason trae el error.
+  groundedness?: { score: number | null; reason: string } | null;
   sources: Source[];
   blocked: boolean;
   passed: boolean;

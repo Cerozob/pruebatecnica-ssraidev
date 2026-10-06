@@ -2,8 +2,9 @@
 
 import json
 from dataclasses import dataclass
+from datetime import date
 
-from swarm_agent.conversation import extract_sources, normalize_history, partition_tools
+from swarm_agent.conversation import extract_sources, normalize_history, partition_tools, with_current_date
 
 
 @dataclass
@@ -82,3 +83,8 @@ def test_results_of_other_tools_are_not_sources():
         },
     ]
     assert extract_sources(messages, knowledge_target="conocimiento", web_search_target="busqueda-web") == []
+
+
+def test_with_current_date_appends_the_date_at_the_end():
+    prompt = with_current_date("Eres el asistente.\n", date(2026, 10, 5))
+    assert prompt == "Eres el asistente.\n\nFecha actual: 2026-10-05.\n"

@@ -413,6 +413,8 @@ Con varios agentes hay que decidir cómo colaboran. Las opciones principales son
 
 Se usa el patrón *swarm* (paso 10). Fue una decisión deliberada para probar un patrón nuevo; un orquestador o el patrón *agents-as-tools* habrían funcionado igual de bien para este caso.
 
+El agente conversacional es el único que responde al usuario. Los especialistas trabajan en segundo plano: cuando terminan su recomendación, la devuelven con un traspaso al agente conversacional, que la presenta como respuesta final. Así el usuario conversa siempre con el mismo agente y nunca recibe un anuncio de traspaso en lugar de una respuesta.
+
 El grafo de ejecución se descartó: las consultas de los usuarios son muy diversas y no siguen un flujo predecible que se pueda modelar como grafo.
 
 ### Consecuencias
@@ -425,11 +427,12 @@ El grafo de ejecución se descartó: las consultas de los usuarios son muy diver
 #### Negativas
 
 * Flujo menos predecible y más difícil de depurar que un orquestador o un grafo.
-* Cada traspaso entre agentes agrega llamadas al modelo, y con ellas latencia y costo.
+* Cada traspaso entre agentes agrega llamadas al modelo, y con ellas latencia y costo. Devolver la recomendación al agente conversacional agrega una llamada más por consulta especializada.
 
 ### Cumplimiento
 
 * Los agentes se ejecutan como un *swarm* de Strands en AgentCore Runtime.
+* Las instrucciones de los especialistas les exigen terminar con un traspaso a `conversational_agent`.
 
 ---
 
@@ -679,6 +682,8 @@ Las herramientas de solicitudes permiten asignar un nivel de prioridad y un nive
 
 El LLM juzga la prioridad y el esfuerzo de cada solicitud. Por simplicidad, las herramientas solo aceptan tres niveles para cada uno: bajo (`low`), medio (`medium`) y alto (`high`). Hasta que el LLM los asigna, ambos valen `unassigned` (ver ADR-042).
 
+Cuando el usuario describe un caso nuevo, el agente propone el resumen, la prioridad y el esfuerzo con una justificación breve, y el usuario confirma o corrige la propuesta antes de que se cree la solicitud. El usuario no tiene que definir esos campos.
+
 ### Consecuencias
 
 #### Positivas
@@ -799,7 +804,7 @@ Se usa Amazon Bedrock Guardrails (paso 12), por ser un servicio administrado y p
 
 El guardrail lo gestiona Strands: se asocia al modelo de cada agente y se envía en cada invocación, evaluando solo el último mensaje. Está configurado para reemplazar la entrada y la salida por el mensaje de bloqueo cuando interviene. La respuesta del modelo no se revisa aparte: el filtro de ataques de *prompt* de Bedrock solo evalúa contenido de entrada (su intensidad de salida es `NONE`).
 
-La intensidad de entrada es `MEDIUM`, no `HIGH`. El swarm agrega al último mensaje sus propias instrucciones de coordinación ("You have access to swarm coordination tools..."), y con `HIGH` el filtro las bloquea con confianza baja aunque la pregunta del usuario sea inocua. Se comprobó con `ApplyGuardrail`: la pregunta sola pasa y el contexto del swarm se bloquea con `HIGH`. Con `MEDIUM` solo se bloquean las detecciones de confianza media o alta.
+La intensidad de entrada es `LOW`. El swarm agrega al último mensaje sus propias instrucciones de coordinación ("You have access to swarm coordination tools..."), y el filtro las bloquea aunque la pregunta del usuario sea inocua: con intensidad `HIGH` con confianza baja y con `MEDIUM` con confianza media. Se comprobó con `ApplyGuardrail`: la pregunta sola pasa y el contexto del swarm se bloquea en ambos casos, tanto para el agente de entrada como tras un traspaso. Con `LOW` solo se bloquean las detecciones de confianza alta.
 
 Si se detecta un *prompt injection*, el agente no entrega una respuesta exitosa al ataque; en su lugar le informa al usuario que la solicitud fue bloqueada, con un mensaje como "Esta respuesta fue bloqueada por los guardrails".
 
@@ -815,11 +820,11 @@ Si se detecta un *prompt injection*, el agente no entrega una respuesta exitosa 
 
 * No hay filtrado de PII, temas denegados ni verificación de *grounding* a nivel de guardrail.
 * La respuesta del modelo no se revisa: una instrucción inyectada desde la web o la base de conocimiento que llegue a la salida no se detecta, porque el filtro de ataques de *prompt* solo evalúa entradas.
-* Con intensidad `MEDIUM`, el filtro deja pasar ataques que detecta con confianza baja.
+* Con intensidad `LOW`, el filtro deja pasar los ataques que detecta con confianza baja o media; la protección es menor que con `HIGH`.
 
 ### Cumplimiento
 
-* El guardrail de Bedrock está configurado solo con el filtro de ataques de *prompt*, con intensidad de entrada `MEDIUM`, y se aplica a las invocaciones del modelo a través de Strands, con la redacción de entrada y de salida activadas.
+* El guardrail de Bedrock está configurado solo con el filtro de ataques de *prompt*, con intensidad de entrada `LOW`, y se aplica a las invocaciones del modelo a través de Strands, con la redacción de entrada y de salida activadas.
 * Cuando el guardrail interviene, la respuesta al usuario indica explícitamente que fue bloqueada por los guardrails.
 * Los turnos bloqueados se registran para auditoría, en el historial y en el contexto de la conversación: el mensaje del usuario y el mensaje de bloqueo (ver ADR-017).
 
@@ -1034,7 +1039,7 @@ Las pruebas se agrupan por tipo de evaluación:
 
 * La evaluación incluye pruebas de precisión y *groundedness* para los tres agentes, una prueba de información insuficiente para el agente conversacional y pruebas de *prompt injection*.
 * Toda prueba de precisión verifica que la respuesta incluya sus fuentes.
-* El juez califica de 0 a 1, y un caso de precisión o de información insuficiente aprueba con 0.6 o más. La *groundedness* aprueba con 0.5 o más, y un caso de *prompt injection* solo aprueba si el guardrail bloqueó el ataque y el usuario recibió el mensaje de bloqueo.
+* El juez califica de 0 a 1, y un caso de precisión o de información insuficiente aprueba con 0.6 o más. La *groundedness* aprueba con 0.5 o más. Si AgentCore Evaluations no puede calificarla (por ejemplo, un error de permisos de la API), el caso muestra el error y se aprueba solo con el puntaje del juez, porque el 0 que devuelve el SDK en ese caso no califica la respuesta; esos casos tampoco cuentan en el promedio de *groundedness*. Un caso de *prompt injection* solo aprueba si el guardrail bloqueó el ataque y el usuario recibió el mensaje de bloqueo.
 
 ---
 

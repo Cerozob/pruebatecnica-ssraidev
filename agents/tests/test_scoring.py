@@ -1,6 +1,8 @@
 """Casos de evaluación y métricas (docs/evaluacion.md, ADR-033)."""
 
-from evaluation.scoring import injection_score, load_cases, summarize
+from dataclasses import dataclass
+
+from evaluation.scoring import case_passed, groundedness_result, injection_score, load_cases, summarize
 
 
 def test_cases_cover_the_four_required_evaluations_and_three_agents():
@@ -42,3 +44,31 @@ def test_summary_metrics():
 
 def test_summary_without_cases_of_a_category_is_null():
     assert summarize([])["accuracy"] is None
+
+
+@dataclass
+class Output:
+    score: float
+    reason: str
+
+
+def test_groundedness_api_error_has_no_score():
+    access_denied = "API error: An error occurred (AccessDeniedException) when calling the Evaluate operation"
+    groundedness = groundedness_result([Output(0.0, access_denied)])
+    assert groundedness == {"score": None, "reason": access_denied}
+
+
+def test_groundedness_averages_scores():
+    groundedness = groundedness_result([Output(1.0, "bien"), Output(0.5, "parcial")])
+    assert groundedness == {"score": 0.75, "reason": "bien | parcial"}
+
+
+def test_groundedness_error_does_not_fail_an_accurate_answer():
+    assert case_passed("accuracy", 1.0, {"score": None, "reason": "API error: ..."})
+    assert not case_passed("accuracy", 1.0, {"score": 0.0, "reason": "No cita fuentes."})
+    assert not case_passed("accuracy", 0.0, {"score": None, "reason": "API error: ..."})
+
+
+def test_summary_ignores_groundedness_errors():
+    summary = summarize([result("accuracy", True, 1.0, {"score": 1.0}), result("accuracy", True, 1.0, {"score": None})])
+    assert summary["groundedness"] == 1.0

@@ -1,5 +1,6 @@
 import Box from "@cloudscape-design/components/box";
 import BreadcrumbGroup from "@cloudscape-design/components/breadcrumb-group";
+import Button from "@cloudscape-design/components/button";
 import Container from "@cloudscape-design/components/container";
 import ContentLayout from "@cloudscape-design/components/content-layout";
 import ExpandableSection from "@cloudscape-design/components/expandable-section";
@@ -24,6 +25,17 @@ import {
 } from "../utils/format";
 
 const REFRESH_MS = 8000;
+
+// The detail endpoint already returns the whole run, so the export is built client-side.
+function downloadEvaluation(evaluation: Evaluation) {
+  const blob = new Blob([JSON.stringify(evaluation, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `evaluacion-${evaluation.evaluationId}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 function ResultDetail({ result }: { result: EvaluationResult }) {
   return (
@@ -100,7 +112,22 @@ export default function EvaluationDetailPage() {
           }}
         />
       }
-      header={<Header variant="h1">Resultados de la evaluación</Header>}
+      header={
+        <Header
+          variant="h1"
+          actions={
+            <Button
+              iconName="download"
+              disabled={!evaluation}
+              onClick={() => evaluation && downloadEvaluation(evaluation)}
+            >
+              Exportar JSON
+            </Button>
+          }
+        >
+          Resultados de la evaluación
+        </Header>
+      }
     >
       <SpaceBetween size="l">
         {error && <StatusIndicator type="error">{error}</StatusIndicator>}
@@ -168,7 +195,7 @@ export default function EvaluationDetailPage() {
             {
               id: "groundedness",
               header: "Groundedness",
-              cell: (item) => (item.groundedness ? item.groundedness.score.toFixed(2) : "-"),
+              cell: (item) => (item.groundedness ? (item.groundedness.score?.toFixed(2) ?? "Error") : "-"),
             },
             {
               id: "passed",

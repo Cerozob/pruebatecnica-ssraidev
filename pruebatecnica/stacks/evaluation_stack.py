@@ -95,8 +95,9 @@ class EvaluationStack(Stack):
             self,
             "GroundednessEvaluatorParam",
             config=config,
-            name="evaluation/groundedness-evaluator-arn",
-            value=self.groundedness_evaluator.evaluator_arn,
+            # El SDK espera el id: con el ARN, AgentCore autoriza contra "evaluator/<arn>" y la política no coincide.
+            name="evaluation/groundedness-evaluator-id",
+            value=self.groundedness_evaluator.evaluator_id,
             description="Evaluador de groundedness de AgentCore Evaluations",
         )
 
@@ -170,7 +171,7 @@ class EvaluationStack(Stack):
                 **agents.agent_environment,
                 "EVALUATIONS_TABLE_NAME": self.evaluations_table.table_name,
                 "JUDGE_MODEL_ID_PARAM": self.judge_model_id_param.parameter_name,
-                "GROUNDEDNESS_EVALUATOR_ARN_PARAM": self.groundedness_evaluator_param.parameter_name,
+                "GROUNDEDNESS_EVALUATOR_ID_PARAM": self.groundedness_evaluator_param.parameter_name,
             },
         )
         acknowledge(
